@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "REVO",
+    "slug": "revo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.revo.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFCD7",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.revo.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "scheme": "revo",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "splash": {
+      "image": "./assets/splash-mark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#101B3B"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "da499b65-cce9-4e08-ad85-3c7e15c6a029"
+      }
+    }
+  }
+}
