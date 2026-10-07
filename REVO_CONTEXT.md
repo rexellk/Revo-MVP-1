@@ -100,10 +100,13 @@ Cards are white with a 1px `line` border and the soft `shadow.card`. Logo mark, 
 
 ## Next steps (in order)
 
-1. Full Revivor run in the simulator against the live backend, and delete leftover test data (see `HANDOFF.md`).
-2. PostHog in `src/analytics.ts` so persona tests capture data.
-3. Admin page for the REVO team: pending submissions with ID, selfie, ASE and profile photo side by side, Approve / Reject per check. Replaces reviewing in the Supabase dashboard.
-4. Driver side on Supabase: Browse reads verified `revivor_profiles`; then listings, conversations, messages, jobs, reviews, with RLS mirroring the trust rules above.
+Open decisions and their recommendations live in `HANDOFF.md` section 3. In short:
+
+1. Full Revivor run in the simulator against the live backend, and delete leftover test data.
+2. Pick the first trust test (D1): moderated persona tests on the demo driver side (add PostHog) or a live pilot (driver Browse from Supabase + lightweight contact requests).
+3. PostHog in `src/analytics.ts` so tests capture data.
+4. Only if piloting: real login (email codes or SMS), then the rest of the driver side.
+5. Later: admin review page, delete account (required for the App Store).
 6. Then MVP2: Stripe Connect in-app payments + take rate.
 
 ## Working style

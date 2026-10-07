@@ -1,133 +1,146 @@
-# REVO MVP1: Session Handoff
+# REVO MVP1: Handoff
 
 **Last updated:** 2026-10-07
-**Read first:** `REVO_CONTEXT.md` (product rules, scope, brand). This file covers what changed recently, what is blocked, and what to do next.
+**Branch:** `feat/supabase-revivor-verification` (committed, not pushed, not merged to `main`)
+**Read first:** `REVO_CONTEXT.md` for product rules, scope and brand. This file covers where things stand, the decisions still open, and what to do next.
 
-## Status at a glance
+## 1. Where we are
+
+The **Revivor (supply) side is real**: a mechanic signs in, builds a profile, uploads ID, selfie and ASE certificates, and the REVO team approves or rejects them in Supabase. The **driver side is still a demo** on built-in sample data. That is enough to run moderated persona tests of the trust hypothesis today.
 
 | Area | State |
 |---|---|
-| Revivor verification backend | Live on Supabase. Submit uploads docs, REVO team reviews in dashboard, app reads the result. |
-| Profile split migration | Applied 2026-10-07. 24/24 access tests passed. |
-| Claude's Supabase access | Connector authorized to the REVO org. Destructive SQL (DROP, DELETE) is auto-declined in sessions that can't show Supabase's confirm prompt; run those in the dashboard. |
-| Test data | **Not deleted yet** (see below). |
-| Phone login | Demo mode (2026-10-07): any number, code 123456, one Supabase account per number. Real SMS mode is built but needs Twilio. |
-| Driver side (browse, chat, jobs, reviews) | Still mocked in memory. |
-| Typecheck / lint | Both pass (`npx tsc --noEmit`, `npx expo lint`). |
-| Git | Committed on branch `feat/supabase-revivor-verification` (not merged to main, not pushed). `.env` is gitignored; copy `.env.example`. |
+| Sign-in | Real accounts in **demo mode**: any 10-digit number, code `123456`, no text sent. Same number = same account on any device. SMS mode is built but needs Twilio. |
+| Revivor onboarding | Real. Profile, profile photo and services save to Supabase. |
+| Verification upload | Real. ID, selfie, ASE certificates (image or PDF), work photos, optional intro video go to private storage. |
+| REVO team review | In the Supabase dashboard (`review_queue` to look, `verification_submissions` to decide). No admin page yet. |
+| Revivor Dashboard | Real. Shows in review / verified / rejected; services and prices save to Supabase. |
+| Returning Revivor | Real. Signing in again (any device) lands on the Dashboard, not onboarding. |
+| Driver Browse, trust profile, chat, jobs, reviews | **Mock** (sample mechanics in app memory). An approved real Revivor does not appear to drivers yet. |
+| Revivor Messages / Jobs tabs | Mock. |
+| Analytics | `track()` logs to the console only. |
+| Checks | `npx tsc --noEmit` and `npx expo lint` pass. Access rules tested live (see section 5). |
 
-## Supabase
+## 2. What was improved
 
-- **Project:** `revo-mvp1`, ref `jypblnwkavmssopypszs`, region us-east-2, org **REVO** (moved out of SongScription by Rexell).
-- **URL:** `https://jypblnwkavmssopypszs.supabase.co`
-- **Keys:** publishable key is in `.env` (safe to ship in the app; RLS protects data). Never put a secret / service_role key in the app.
-- **Auth:** anonymous sign-ins are ON. Each device gets an anonymous user; real phone OTP comes later.
+**Backend (Supabase project `revo-mvp1`, REVO org)**
+- Tables: `profiles` (private: legal name, phone), `revivor_profiles` (public profile), `revivor_listings` (services + prices), `verification_submissions` (docs + review status), and the `review_queue` view for the team.
+- Private storage: `verification-docs` (ID, selfie, certificates, work photos, intro video) and `profile-photos`.
+- Security rules (RLS): a Revivor can only touch their own data, can never set their own status or `phone_confirmed`, can't download verification docs, and is hidden from everyone else until verified. Nobody else can see phone numbers or ID documents.
+- All database SQL is versioned in `supabase/migrations/` (4 files, all applied).
 
-### Migrations (`supabase/migrations/`, apply in filename order)
+**Revivor app**
+- Onboarding saves to Supabase with loading states and clear error messages.
+- "Submit for review" uploads everything and only moves on when the upload succeeds.
+- Dashboard reads the team's decision on open and via **Check status**; "Simulate REVO approval" is gone. Rejections show the reviewer's note and reopen "Finish verification".
+- Services: add, price and delete all save to Supabase.
 
-1. `20261007000000_verification_submissions.sql`: **applied.** `verification_submissions` table, `check_status` enum, private `verification-docs` bucket, RLS, `reviewed_at` trigger.
-2. `20261007010000_split_profiles.sql`: **applied** 2026-10-07. Adds:
-   - `profiles` (private: role, legal name, phone, `phone_confirmed`). Column grants stop users writing `phone_confirmed`.
-   - `revivor_profiles` (what drivers see). Readable by the owner, or by anyone once `private.is_verified_revivor()` is true.
-   - `profile-photos` bucket; photos readable only when the profile is readable.
-   - Keeps the old `full_name`, `area`, `years_experience`, `bio` columns on `verification_submissions` but unused (`full_name` made optional). Dropping them was auto-declined; the drop SQL is in a comment in the file.
-   - Security advisor after applying: no errors. Warnings are expected: "Anonymous Access Policies" (every MVP1 user is anonymous by design; RLS still limits each to their own rows) and "Leaked Password Protection" (no passwords in the app).
-   - `review_queue` view (security_invoker, no access for app roles) joining submission + profile + account for the REVO team.
-   - Adds `application/pdf` to the `verification-docs` bucket.
+**Sign-in**
+- One screen for sign-up and sign-in (like Lyft: the phone number is the account).
+- Demo mode now; SMS mode ready (`EXPO_PUBLIC_AUTH_MODE=sms` + Twilio).
+- Stays signed in between launches; **Resend code** (30s cooldown) and **Change number**; logout clears local data.
 
-### Access tests (live project, after migration 2, 2026-10-07): 24/24 passed
+**Fixes and UX**
+- iOS freeze when adding an ASE certificate (picker opened while the sheet was still closing). Fixed for every action sheet.
+- Native iOS photo sheet: Take Photo / Photo Library / Choose File. PDFs accepted for ID and ASE.
+- Work photos now need 1 (was 3).
 
-Revivor A: saves account and re-saves it (upsert insert + update paths); cannot set `phone_confirmed` (403); uploads profile photo; saves public profile; uploads a PDF certificate; submits without name fields; cannot submit as `verified` (403); cannot self-approve via update; reads own status and own profile; cannot download own ID; cannot upload into another user's folder.
-User B, while A is unverified: cannot read A's public profile, account/phone, submission, or profile photo; cannot read `review_queue` (403). No-login reads are denied (401).
-After the team sets A to verified: A sees `verified`; B can read A's public profile and photo; B still cannot read A's phone or download A's ID. `review_queue` shows legal name, display name, phone, profile photo and doc paths in one row.
+**Docs and design**
+- `README.md`, `REVO_CONTEXT.md`, this handoff, `.env.example` (`.env` is gitignored).
+- Google Stitch project "REVO MVP1" (id `3870147321008411589`): 3 driver home directions, screenshots in `design/stitch-driver-home/`.
 
-### Listings tests (2026-10-07): all passed
+## 3. Decisions needed
 
-Add a service, set its price (upsert), add another, delete own; bad range (90-50) and unknown service rejected; another user can't read an unverified Revivor's listings, can't add listings as them (403), and can't delete theirs (0 rows). Verified Revivors' listings are readable by any signed-in user (by design, for the driver side).
+Ordered by how much they change what gets built next. Recommendation in bold.
 
-### Test data to delete (in the dashboard)
+| # | Decision | Options | Recommendation |
+|---|---|---|---|
+| D1 | **How do we test the trust hypothesis first?** | A. Moderated persona tests with the current mock driver side (needs only PostHog, ~0.5 day). B. Live pilot with real drivers and real WCC Revivors (needs Browse from Supabase + contact requests, ~1-2 days). | **A first**, B only if A looks promising. |
+| D2 | If B: what happens to the sample mechanics on Browse? | Remove (only real verified Revivors) or keep, labeled "Sample". | **Keep labeled** until there are ~5 real verified Revivors. |
+| D3 | If B: how do drivers contact Revivors? | Full real-time chat; lightweight contact request (one message, then both opt in to share numbers and continue by text/WhatsApp); external WhatsApp link only. | **Contact request.** Keeps "phone hidden until both opt in" and measures contact. WhatsApp-only exposes numbers and hides the data. |
+| D4 | Real login before real users | SMS via Twilio (~$3/month for a pilot, plus carrier registration that can take weeks); email codes (free, no paperwork); stay on demo. | Demo for persona tests. **Email codes** if a pilot starts soon; SMS if phone verification matters more than speed. |
+| D5 | Trust profile and Revivor UX tweaks | (a) make the **ID row tappable** with its verification record; (b) trim duplicate verification checklists (keep Dashboard's); (c) fix the dead "How REVO verifies Revivors" link; (d) hide "Phone number confirmed" from verification lists. | **Do (a) and (c)** before persona tests: ID is the core claim and currently has the weakest proof on screen. (b) and (d) are polish. |
+| D6 | Driver home redesign | Stitch directions A (Trust Hero), B (Credential-first list), C (Faces first), or keep current. | **B's credential row under A's navy explainer.** Fix the unbacked copy in B and C if used. |
+| D7 | Before an App Store build | Delete account in Profile (Apple requires it); duplicate-ID flag in `review_queue`; change phone number. | **Delete account is required**; the others can wait. |
+| D8 | Git | Push the branch and open a PR; merge to `main` after a simulator run. | **Push now** (backup), merge after testing. |
 
-Authentication > Users: also delete demo test accounts `08f2dc04-985e-4409-8887-0c6fed6014c8` ((555) 000-0001) and `857974bf-69d7-4070-935a-ad3c69e1f0fc` ((555) 000-0002). And these 3 anonymous users (their table rows cascade):
-`64c7336f-6a1b-48ac-b1ad-5c5f096af192`, `26866aaf-7daa-4b2f-b1e4-566572f52e5d`, `1f99cb21-861f-411b-9a17-5fe23ce10124`.
-Storage: delete the `64c7336f-...` and `26866aaf-...` folders in `verification-docs`, and the `26866aaf-...` folder in `profile-photos`. Then confirm `verification_submissions`, `profiles`, `revivor_profiles` have no TEST rows.
+## 4. Next steps
 
-## What changed this session
+**Rexell, in the app and dashboard (no decision needed)**
+1. Full simulator run: mechanic signs in, onboards, submits; approve in Supabase; **Check status** shows Verified; log out and back in lands on the Dashboard; services and prices survive re-login.
+2. Delete test data (list in section 5).
+3. Authentication > Sign In / Providers: turn **off** "Allow anonymous sign-ins" (no longer used).
+4. Optional: drop the 4 unused columns on `verification_submissions` (SQL is in a comment in `20261007010000_split_profiles.sql`).
 
-**Backend + app wiring**
-- `src/lib/supabase.ts`: client with AsyncStorage session.
-- `src/lib/verification.ts`: `saveRevivorProfile` (step 1), `submitVerification` (step 2 uploads + row), `fetchLatestSubmission` (dashboard). Folders are `<user_id>/<YYYY-MM-DD_HHMMSS>/`.
-- `src/store.ts`: `simulateApproval` removed and replaced by `applyReview(review)`. Rejected checks reset to `not_started` and `meSubmitted` goes false so "Finish verification" reappears. Store now keeps `phone` from sign-in.
-- `src/app/onboarding/index.tsx`: Continue saves the profile to Supabase (loading + error alert).
-- `src/app/onboarding/evidence.tsx`: Submit uploads everything first and only navigates on success.
-- `src/app/revivor/index.tsx`: reads review status on focus; "Simulate REVO approval" replaced by "Check status".
-- Packages added: `@supabase/supabase-js`, `@react-native-async-storage/async-storage`, `expo-document-picker`. `app.json` has the `expo-image-picker` plugin with camera/photo permission strings.
+**Then, depending on D1**
+- **If A (persona tests):** PostHog in `src/analytics.ts` -> D5 (a) and (c) -> write the test script and run sessions.
+- **If B (live pilot):** Browse + trust profile from Supabase (plus a driver `profiles` row) -> contact requests (D3) -> PostHog -> real login (D4).
 
-**Bug fixes and UX**
-- ASE "Add certificate" froze the app on iOS: the image picker opened while the ActionSheet modal was still closing. Fixed in `src/components/sheet.tsx` (action runs on `onDismiss` on iOS). Applies to every ActionSheet.
-- Photo slots use the native iOS sheet (Take Photo / Photo Library / Choose File). Android and web use the brand sheet with the same options.
-- ID and ASE accept PDFs (shown with a PDF icon). Work photos now require 1 (was 3).
+**Out of MVP1 unless decided otherwise:** full real-time chat, jobs and reviews backend, report/block backend, admin page (the dashboard works), My vehicles, Settings.
 
-**Design exploration**
-- Google Stitch project "REVO MVP1" (id `3870147321008411589`): 3 driver home directions (Trust Hero, Credential-first list, Faces first). Screenshots in `design/stitch-driver-home/`.
-- Recommendation given: B's credential row on cards under A's navy explainer. Not built.
-- Copy to fix if any direction is used: C's "No middleman pricing" and B's "No platform markups" are unbacked claims.
+## 5. Reference
 
-## Open suggestions (discussed, not built, waiting on Rexell)
+### Supabase
+- Project `revo-mvp1`, ref `jypblnwkavmssopypszs`, us-east-2, org REVO. URL `https://jypblnwkavmssopypszs.supabase.co`.
+- Keys: only the publishable key goes in the app (`.env`). Never a secret / service_role key.
+- Auth settings: Email provider on with **Confirm email off** (needed by demo login; no emails are sent); Phone provider off until Twilio; anonymous sign-ins still on (turn off).
+- Claude's Supabase connector is authorized for the REVO org only (one org per connection). Destructive SQL (DROP, DELETE) from Claude gets auto-declined because the confirm prompt can't be shown; run those in the dashboard SQL Editor.
 
-1. Make the **ID row tappable** on the trust profile (`src/app/revivors/[id].tsx`), opening the Credential modal with the verification record only (no document image). Today only ASE rows open it, so ID, the core MVP1 claim, has the weakest proof on screen.
-2. **Trim duplicate verification checklists** on the Revivor side: keep the Dashboard card; reduce Profile to badge + link; drop the list on Submitted.
-3. **Fix the dead link** "How REVO verifies Revivors" in `src/app/driver/profile.tsx` (it routes to Browse).
-4. Hide "Phone number confirmed" from verification lists, or label it as account info, so testers don't read it as a third check.
-5. Admin review page (see Next steps).
+### Migrations (`supabase/migrations/`, all applied 2026-10-07)
+1. `20261007000000_verification_submissions.sql`: submissions table, status enum, `verification-docs` bucket, RLS, `reviewed_at` trigger.
+2. `20261007010000_split_profiles.sql`: `profiles`, `revivor_profiles`, `profile-photos` bucket, `review_queue` view, PDF support, `private.is_verified_revivor()`. Old name/bio columns on submissions kept but unused.
+3. `20261007020000_sync_phone_confirmed.sql`: `phone_confirmed` follows Supabase Auth's verified phone (stays false in demo mode).
+4. `20261007030000_revivor_listings.sql`: services + price ranges, one row per service.
 
-## Known gaps and gotchas
+Security advisor: no errors. Expected warnings: "Anonymous Access Policies" (goes away once anonymous sign-ins are off) and "Leaked Password Protection" (demo passwords only).
 
-- The Revivor's profile lives in Zustand memory. Reloading the app loses it locally, and onboarding starts over (creating a second submission for the same anonymous user if they resubmit).
-- `review_queue` joins several tables, so Supabase can't edit through it. Reviewers set statuses in `verification_submissions` by `submission_id`.
-- Table Editor shows file paths, not images. Files are in Storage under the user's id folder. This is expected.
-- Anonymous sign-ins are rate limited to 30/hour per IP. Fine for a pilot; add CAPTCHA before a public launch.
-- `ENOENT ... development-code-signing-settings-2.json` from `expo start` is an Expo CLI cache race, not app code. Fix: stop the server, `rm -rf ~/.expo/codesigning`, restart, press `i` once.
+### Access tests (live, 2026-10-07): all passed
+- Revivor: saves and re-saves account and profile; uploads photo, PDF and docs; submits; manages own services.
+- Revivor cannot: set `phone_confirmed`, submit as verified, self-approve, download own ID, upload into another user's folder, save a bad price range or unknown service.
+- Another user, while the Revivor is unverified: cannot see their profile, photo, services, phone, submission, or `review_queue`. No-login reads are denied.
+- After approval: profile, photo and services become visible to signed-in users; phone and ID stay private.
 
-## Phone login
+### How the REVO team reviews a Revivor
+1. Table Editor > `review_queue`: who is waiting (legal name, phone, file paths). Copy `submission_id`.
+2. Storage > `verification-docs` > their user id > dated folder: check ID, selfie, ASE, work photos. Profile photo is in `profile-photos`.
+3. Table Editor > `verification_submissions` > that row: set `id_status` and `ase_status` from the dropdown (`verified` / `rejected`), add `reviewer_note` if rejecting, save.
+4. The Revivor sees it on Dashboard open or **Check status**.
 
-**Now (demo mode, `EXPO_PUBLIC_AUTH_MODE=demo`):** no SMS; code is always 123456. `src/lib/auth.ts` signs each number into an email/password account (`<digits>@phone.revo-mvp1.app`, password derived from the number). Requires Supabase "Confirm email" OFF so no emails are sent. DEMO ONLY: anyone can sign in as any number. `phone_confirmed` stays false for these accounts.
+### How sign-in works
+- `src/lib/auth.ts`. Demo mode maps each number to an email/password account (`<digits>@phone.revo-mvp1.app`). DEMO ONLY: anyone who knows a number can sign in as it.
+- `src/lib/session.ts` `enterRevivorSide()`: no profile -> onboarding; profile -> `hydrateMe` rebuilds the Revivor from Supabase -> Dashboard.
+- SMS mode setup: Twilio account + number (trial texts only verified numbers) -> Supabase Phone provider = Twilio -> set `EXPO_PUBLIC_AUTH_MODE=sms`. Texting the public needs a paid account and A2P 10DLC registration (or a verified toll-free number), which can take weeks. Demo accounts don't carry over.
 
-**Later (real SMS, `EXPO_PUBLIC_AUTH_MODE=sms`):** Twilio trial texts only verified numbers; texting the public needs a paid account plus A2P 10DLC registration (or a verified toll-free number), which can take weeks, so start ~2 weeks before the pilot. Demo accounts don't carry over to SMS accounts.
+### Test data to delete (dashboard)
+- Authentication > Users: `08f2dc04-985e-4409-8887-0c6fed6014c8` ((555) 000-0001), `857974bf-69d7-4070-935a-ad3c69e1f0fc` ((555) 000-0002), and anonymous users `64c7336f-6a1b-48ac-b1ad-5c5f096af192`, `26866aaf-7daa-4b2f-b1e4-566572f52e5d`, `1f99cb21-861f-411b-9a17-5fe23ce10124`, `eebaf155-4e28-48ca-8252-371d5f7c278d` (if it was your early test). Their table rows are removed with them.
+- Storage: the matching folders in `verification-docs` and `profile-photos`.
+- Keep `5c30b3cd-7bab-477a-9844-79b74d73f7fe` if it is your own verified test Revivor.
 
-1. Twilio: create an account, buy a US phone number (~$1/mo), and from the console copy Account SID, Auth Token, and either the phone number or a Messaging Service SID. A trial account can only text numbers you verify in Twilio.
-2. Supabase > Authentication > Sign In / Providers > Phone: enable, provider Twilio, paste the values, save.
-3. Optional for testing without texts: in the same Phone settings, add test numbers with fixed codes (e.g. `17345550100=123456`).
-4. Test: sign in as a mechanic with a new number -> onboarding; finish and submit; log out; sign in again with the same number -> lands on Dashboard with the right status, no onboarding.
-5. Then turn OFF "Allow anonymous sign-ins" (no longer used by the app).
+### Gotchas
+- Table Editor shows file paths, not images; open files in Storage. Folders are named by user id because the security rules use it.
+- `review_queue` is read-only; set statuses in `verification_submissions`.
+- Anonymous users don't show in Authentication > Users while the search is set to "Email address"; switch to user ID.
+- The iOS Simulator has no camera: use Photo Library or Choose File.
+- `ENOENT ... development-code-signing-settings-2.json` on `expo start` is an Expo CLI cache race: stop the server, `rm -rf ~/.expo/codesigning`, restart, press `i` once.
+- Demo-only code in `src/store.ts` (marked `DEMO ONLY`): chat auto-replies, auto-confirmed jobs, the first driver message after verification.
 
-How routing works: `src/lib/session.ts` `enterRevivorSide()` reads `revivor_profiles` + latest submission. No profile -> onboarding. Profile -> `hydrateMe` rebuilds the Revivor in the store, then Dashboard. Logging out calls `supabase.auth.signOut()` and clears the local Revivor. Services and prices are on Supabase (`revivor_listings`, migration `20261007030000`), so they survive re-login.
-
-## Next steps (in order)
-
-1. ~~**Restore Supabase access for Claude.**~~ Done (REVO org). claude.ai > Settings > Connectors > Supabase > Disconnect > Connect > pick the **REVO** org > Authorize, then start a new Claude Code session. The claude.ai Supabase connector is authorized for **one organization per connection** (Supabase docs: "choose the organization that contains the project"), so picking REVO drops SongScription. If both are needed at once, add a second Supabase MCP server in Claude Code that uses a Supabase personal access token (account-wide), ideally scoped with `?project_ref=jypblnwkavmssopypszs`. Alternative with no connector: paste migration 2 into the dashboard SQL Editor and run it.
-2. ~~Apply migration 2, advisor, access tests.~~ Done. Still to do: delete the test data (dashboard).
-3. Do a full Revivor run in the simulator: step 1 saves, submit uploads, approve in dashboard, Check status flips to verified.
-4. Decide on the open suggestions above.
-5. PostHog in `src/analytics.ts`.
-6. Admin review page.
-7. Driver side on Supabase, then real phone OTP linked to the anonymous user.
-8. ~~Commit.~~ Done on `feat/supabase-revivor-verification`; merge to main when ready.
-
-## Prompt for the next Claude session
+## 6. Prompt for the next Claude session
 
 ```
-You're continuing work on REVO MVP1, an Expo SDK 57 / Expo Router app in this repo.
-Read REVO_CONTEXT.md, then HANDOFF.md, before doing anything. Follow AGENTS.md
-(check versioned Expo docs before touching Expo APIs; use npx expo install; run
-npx tsc --noEmit and npx expo lint before calling work done). No em dashes in any output.
+You're continuing work on REVO MVP1, an Expo SDK 57 / Expo Router app in this repo
+(branch feat/supabase-revivor-verification). Read REVO_CONTEXT.md, then HANDOFF.md,
+before doing anything. Follow AGENTS.md (check versioned Expo docs before touching Expo
+APIs; use npx expo install; run npx tsc --noEmit and npx expo lint before calling work
+done). No em dashes in any output. MVP1 tests trust only: don't overengineer.
 
 First task:
-1. Confirm you can reach the Supabase project revo-mvp1 (ref jypblnwkavmssopypszs)
-   in the REVO org with the Supabase MCP tools. Both migrations are already applied.
-2. Check that the test data listed in HANDOFF.md is gone. If any remains, tell me what
-   to delete in the dashboard (DELETE/DROP from your tools gets auto-declined).
-3. Walk me through the open suggestions in HANDOFF.md and ask which to build first.
+1. Confirm you can reach the Supabase project revo-mvp1 (ref jypblnwkavmssopypszs) with
+   the Supabase MCP tools.
+2. Check whether the test data in HANDOFF.md section 5 is gone; if not, tell me what to
+   delete in the dashboard (DELETE/DROP from your tools gets auto-declined).
+3. Ask me which decisions in HANDOFF.md section 3 are made, starting with D1, then propose
+   the smallest plan for the chosen path.
 4. Update HANDOFF.md with the new status.
 
-Then wait for me before starting the next item.
+Then wait for me before building.
 ```
