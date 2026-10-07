@@ -32,9 +32,8 @@ export const REVIVORS: Revivor[] = [
     memberSince: '2026-05-14',
     verifications: [
       { type: 'id', status: 'verified', label: 'Government ID matched to selfie', verifiedAt: '2026-05-16', verifiedBy: 'REVO team' },
-      { type: 'certification', status: 'verified', label: 'ASE Certified: Brakes (A5)', verifiedAt: '2026-05-18', verifiedBy: 'REVO team', documentName: 'ASE_A5_certificate.pdf' },
-      { type: 'certification', status: 'verified', label: 'ASE Certified: Engine Performance (A8)', verifiedAt: '2026-05-18', verifiedBy: 'REVO team', documentName: 'ASE_A8_certificate.pdf' },
-      { type: 'background', status: 'verified', label: 'Background check cleared', verifiedAt: '2026-05-22', verifiedBy: 'REVO team' },
+      { type: 'ase', status: 'verified', label: 'ASE Certified: Brakes (A5)', verifiedAt: '2026-05-18', verifiedBy: 'REVO team', documentName: 'ASE_A5_certificate.pdf' },
+      { type: 'ase', status: 'verified', label: 'ASE Certified: Engine Performance (A8)', verifiedAt: '2026-05-18', verifiedBy: 'REVO team', documentName: 'ASE_A8_certificate.pdf' },
       { type: 'phone', status: 'verified', label: 'Phone number confirmed', verifiedAt: '2026-05-14', verifiedBy: 'REVO team' },
     ],
     listings: [
@@ -66,8 +65,7 @@ export const REVIVORS: Revivor[] = [
     memberSince: '2026-06-02',
     verifications: [
       { type: 'id', status: 'verified', label: 'Government ID matched to selfie', verifiedAt: '2026-06-03', verifiedBy: 'REVO team' },
-      { type: 'certification', status: 'verified', label: 'ASE Master Technician', verifiedAt: '2026-06-05', verifiedBy: 'REVO team', documentName: 'ASE_master.pdf' },
-      { type: 'background', status: 'verified', label: 'Background check cleared', verifiedAt: '2026-06-09', verifiedBy: 'REVO team' },
+      { type: 'ase', status: 'verified', label: 'ASE Master Technician', verifiedAt: '2026-06-05', verifiedBy: 'REVO team', documentName: 'ASE_master.pdf' },
       { type: 'phone', status: 'verified', label: 'Phone number confirmed', verifiedAt: '2026-06-02', verifiedBy: 'REVO team' },
     ],
     listings: [
@@ -90,7 +88,7 @@ export const REVIVORS: Revivor[] = [
     name: 'Jeremy K.',
     initials: 'JK',
     avatarTone: '#0E0F39',
-    bio: 'Second year in the Washtenaw Community College automotive program. I work under supervision at a local shop and take small jobs on my days off.',
+    bio: 'Washtenaw Community College automotive program grad, ASE certified in maintenance and light repair. I work at a local shop and take small jobs on my days off.',
     yearsExperience: 3,
     area: 'Ypsilanti',
     radiusMiles: 10,
@@ -98,8 +96,7 @@ export const REVIVORS: Revivor[] = [
     memberSince: '2026-07-20',
     verifications: [
       { type: 'id', status: 'verified', label: 'Government ID matched to selfie', verifiedAt: '2026-07-21', verifiedBy: 'REVO team' },
-      { type: 'certification', status: 'verified', label: 'WCC Automotive Program: enrolled student', verifiedAt: '2026-07-24', verifiedBy: 'REVO team', documentName: 'WCC_enrollment.pdf' },
-      { type: 'background', status: 'in_review', label: 'Background check in progress' },
+      { type: 'ase', status: 'verified', label: 'ASE Certified: Maintenance & Light Repair (G1)', verifiedAt: '2026-07-24', verifiedBy: 'REVO team', documentName: 'ASE_G1_certificate.pdf' },
       { type: 'phone', status: 'verified', label: 'Phone number confirmed', verifiedAt: '2026-07-20', verifiedBy: 'REVO team' },
     ],
     listings: [
@@ -129,8 +126,7 @@ export const REVIVORS: Revivor[] = [
     memberSince: '2026-09-15',
     verifications: [
       { type: 'id', status: 'verified', label: 'Government ID matched to selfie', verifiedAt: '2026-09-16', verifiedBy: 'REVO team' },
-      { type: 'certification', status: 'in_review', label: 'Fleet maintenance certificate in review', documentName: 'fleet_cert.pdf' },
-      { type: 'background', status: 'not_started', label: 'Background check not started' },
+      { type: 'ase', status: 'verified', label: 'ASE Certified: Brakes (A5)', verifiedAt: '2026-09-18', verifiedBy: 'REVO team', documentName: 'ASE_A5_certificate.pdf' },
       { type: 'phone', status: 'verified', label: 'Phone number confirmed', verifiedAt: '2026-09-15', verifiedBy: 'REVO team' },
     ],
     listings: [
@@ -148,7 +144,7 @@ export const REVIVORS: Revivor[] = [
     availability: 'flexible',
   },
   {
-    // Level 0: must never appear in driver search.
+    // Not verified (no ASE certificate yet): must never appear in driver search.
     id: 'tom',
     name: 'Tom B.',
     initials: 'TB',
@@ -161,8 +157,7 @@ export const REVIVORS: Revivor[] = [
     memberSince: '2026-09-21',
     verifications: [
       { type: 'id', status: 'in_review', label: 'Government ID in review' },
-      { type: 'certification', status: 'not_started', label: 'No certification uploaded' },
-      { type: 'background', status: 'not_started', label: 'Background check not started' },
+      { type: 'ase', status: 'not_started', label: 'No ASE certificate uploaded' },
       { type: 'phone', status: 'verified', label: 'Phone number confirmed', verifiedAt: '2026-09-21', verifiedBy: 'REVO team' },
     ],
     listings: [{ id: 'l1', service: 'oil', priceMin: 30, priceMax: 40 }],
@@ -180,7 +175,7 @@ export const REVIEWS: Review[] = [
   { id: 'r3', jobId: 'past3', revivorId: 'sammy', authorName: 'Megan R.', rating: 4, tags: ['Explained the work'], text: 'Ran about 20 minutes late but texted me in the app. Great work otherwise.', service: 'battery', vehicle: '2016 Ford Escape', date: '2026-08-09' },
   { id: 'r4', jobId: 'past4', revivorId: 'marcus', authorName: 'Chris L.', rating: 5, tags: ['No upsell', 'Clean work'], text: 'Told me my brakes were fine and I did not need anything extra. Rare.', service: 'oil', vehicle: '2020 Honda CR-V', date: '2026-09-06' },
   { id: 'r5', jobId: 'past5', revivorId: 'marcus', authorName: 'Aisha N.', rating: 5, tags: ['On time'], text: 'Swapped my headlight in ten minutes and cleaned the lens too.', service: 'bulbs', vehicle: '2018 Toyota Camry', date: '2026-08-30' },
-  { id: 'r6', jobId: 'past6', revivorId: 'jeremy', authorName: 'Sam T.', rating: 5, tags: ['Explained the work', 'Friendly'], text: 'Student but very careful. Double checked every lug nut.', service: 'tires', vehicle: '2014 Ford Focus', date: '2026-09-10' },
+  { id: 'r6', jobId: 'past6', revivorId: 'jeremy', authorName: 'Sam T.', rating: 5, tags: ['Explained the work', 'Friendly'], text: 'Young but very careful. Double checked every lug nut.', service: 'tires', vehicle: '2014 Ford Focus', date: '2026-09-10' },
   { id: 'r7', jobId: 'past7', revivorId: 'jeremy', authorName: 'Olivia W.', rating: 4, tags: ['Price matched chat'], text: 'Good oil change, took a bit longer than expected.', service: 'oil', vehicle: '2016 Toyota Corolla', date: '2026-08-28' },
 ];
 

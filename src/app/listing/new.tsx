@@ -1,11 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { track } from '../../analytics';
 import { StickyFooter, TopBar } from '../../components/layout';
 import { Banner, Button, Chip, Field, Icon, Label, Row } from '../../components/ui';
 import { SERVICES, SERVICE_ORDER } from '../../data/mock';
 import type { ServiceId } from '../../data/types';
+import { saveListing } from '../../lib/verification';
 import { ME_ID, useStore } from '../../store';
 import { colors, space } from '../../theme';
 
@@ -17,6 +18,7 @@ export default function ListingEditor() {
   const [min, setMin] = useState(existing?.priceMin ? String(existing.priceMin) : '');
   const [max, setMax] = useState(existing?.priceMax ? String(existing.priceMax) : '');
   const [note, setNote] = useState(existing?.note ?? '');
+  const [saving, setSaving] = useState(false);
 
   const lo = Number(min);
   const hi = Number(max || min);
@@ -53,11 +55,20 @@ export default function ListingEditor() {
         <Button
           title="Save service"
           disabled={!ok}
-          onPress={() => {
+          loading={saving}
+          onPress={async () => {
             if (!service) return;
-            add({ service, priceMin: lo, priceMax: hi, note: note.trim() || undefined });
-            track('listing_created', { service, lo, hi });
-            router.back();
+            setSaving(true);
+            try {
+              await saveListing({ service, priceMin: lo, priceMax: hi, note: note.trim() || null });
+              add({ service, priceMin: lo, priceMax: hi, note: note.trim() || undefined });
+              track('listing_created', { service, lo, hi });
+              router.back();
+            } catch (e) {
+              Alert.alert('Could not save', e instanceof Error ? e.message : 'Check your connection and try again.');
+            } finally {
+              setSaving(false);
+            }
           }}
         />
       </StickyFooter>

@@ -13,11 +13,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionSheet, type SheetOption } from '../../components/sheet';
-import { LevelBadge } from '../../components/trust';
+import { VerifiedBadge } from '../../components/trust';
 import { Avatar, Banner, Button, Chip, Icon, Label, Row } from '../../components/ui';
 import { SERVICES, SERVICE_ORDER } from '../../data/mock';
 import type { Message, ServiceId } from '../../data/types';
-import { fmtTime, levelOf, useStore } from '../../store';
+import { fmtTime, isVerified, useStore } from '../../store';
 import { colors, fonts, radius, space } from '../../theme';
 
 export default function Chat() {
@@ -93,7 +93,7 @@ export default function Chat() {
               <Text style={styles.headerName} numberOfLines={1}>
                 {otherName}
               </Text>
-              {role === 'driver' ? <LevelBadge level={levelOf(r)} /> : <Text style={styles.headerSub}>Driver · phone verified</Text>}
+              {role === 'driver' ? <VerifiedBadge verified={isVerified(r)} /> : <Text style={styles.headerSub}>Driver · phone verified</Text>}
             </View>
           </Pressable>
           <Pressable onPress={() => setMenu('main')} hitSlop={10} accessibilityLabel="More options">

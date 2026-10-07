@@ -2,7 +2,7 @@ export type Role = 'driver' | 'revivor';
 
 export type ServiceId = 'oil' | 'brakes' | 'battery' | 'bulbs' | 'tires';
 
-export type CheckType = 'id' | 'certification' | 'background' | 'phone';
+export type CheckType = 'id' | 'ase' | 'phone';
 export type CheckStatus = 'verified' | 'in_review' | 'not_started';
 
 /** A single verification record. Only the REVO team can create or change these. */
@@ -14,9 +14,6 @@ export interface Verification {
   verifiedBy?: string; // REVO team member
   documentName?: string;
 }
-
-/** 0 = not visible in search. 1 = ID. 2 = ID + certification. 3 = + background check. */
-export type VerificationLevel = 0 | 1 | 2 | 3;
 
 export interface Listing {
   id: string;

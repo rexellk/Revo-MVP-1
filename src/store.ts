@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { track } from './analytics';
 import { DRIVER, REVIEWS, REVIVORS, SEED_CONVERSATIONS, SEED_JOBS, SERVICES } from './data/mock';
+import type { MyRevivor, SubmissionStatus } from './lib/verification';
 import type {
   Conversation,
   Job,
@@ -11,22 +12,24 @@ import type {
   Role,
   ServiceId,
   Verification,
-  VerificationLevel,
 } from './data/types';
 
 // ---------- Trust rules (mirror these in Supabase RLS later) ----------
 
-/** Level comes only from REVO-team verification records, never from anything a Revivor types. */
-export function levelOf(r: Pick<Revivor, 'verifications'>): VerificationLevel {
-  const ok = (t: Verification['type']) => r.verifications.some((v) => v.type === t && v.status === 'verified');
-  if (!ok('id')) return 0;
-  if (!ok('certification')) return 1;
-  if (!ok('background')) return 2;
-  return 3;
-}
+/** Every Revivor needs both: a government ID matched to a selfie, and at least one ASE certification. */
+export const REQUIRED_CHECKS = ['id', 'ase'] as const;
 
-/** Unverified Revivors (level 0) never appear in search and cannot be messaged. */
-export const isSearchable = (r: Revivor) => levelOf(r) >= 1;
+const hasVerified = (r: Pick<Revivor, 'verifications'>, t: Verification['type']) =>
+  r.verifications.some((v) => v.type === t && v.status === 'verified');
+
+/** Required checks the REVO team has not verified yet. */
+export const missingChecks = (r: Pick<Revivor, 'verifications'>) => REQUIRED_CHECKS.filter((t) => !hasVerified(r, t));
+
+/** Verified comes only from REVO-team verification records, never from anything a Revivor types. */
+export const isVerified = (r: Pick<Revivor, 'verifications'>) => missingChecks(r).length === 0;
+
+/** Unverified Revivors never appear in search and cannot be messaged. */
+export const isSearchable = (r: Revivor) => isVerified(r);
 
 export function ratingOf(reviews: Review[], revivorId: string) {
   const mine = reviews.filter((r) => r.revivorId === revivorId);
@@ -45,7 +48,7 @@ export function needsAction(j: Job, role: Role) {
 }
 
 /** Display order for verification checks. */
-export const CHECK_ORDER = ['id', 'certification', 'background', 'phone'] as const;
+export const CHECK_ORDER = ['id', 'ase', 'phone'] as const;
 export const sortChecks = (vs: Verification[]) => [...vs].sort((a, b) => CHECK_ORDER.indexOf(a.type) - CHECK_ORDER.indexOf(b.type));
 
 export const convsFor = (cs: Conversation[], role: Role) =>
@@ -68,8 +71,7 @@ export interface RevivorDraft {
 
 export interface EvidenceDraft {
   idUploaded: boolean;
-  backgroundConsent: boolean;
-  certifications: { name: string; fileName: string }[];
+  aseCertificates: { name: string; fileName: string }[];
   workPhotos: string[]; // local uris
   introVideo: boolean;
 }
@@ -77,6 +79,8 @@ export interface EvidenceDraft {
 interface State {
   signedIn: boolean;
   role: Role;
+  phone: string | null; // E.164, typed at sign-in. Not confirmed until real SMS login exists.
+
   revivors: Revivor[];
   reviews: Review[];
   jobs: Job[];
@@ -86,7 +90,7 @@ interface State {
   meSubmitted: boolean;
   autoReplied: Record<string, boolean>;
 
-  signIn: (role: Role) => void;
+  signIn: (role: Role, phone?: string) => void;
   signOut: () => void;
   setRole: (role: Role) => void;
   setSelectedService: (s: ServiceId | null) => void;
@@ -104,7 +108,8 @@ interface State {
 
   createRevivorProfile: (d: RevivorDraft) => void;
   submitEvidence: (e: EvidenceDraft) => void;
-  simulateApproval: () => void;
+  applyReview: (review: SubmissionStatus) => void;
+  hydrateMe: (remote: MyRevivor) => void;
   addListing: (l: Omit<Listing, 'id'>) => void;
   removeListing: (id: string) => void;
 }
@@ -114,6 +119,7 @@ const later = (ms: number, fn: () => void) => setTimeout(fn, ms);
 export const useStore = create<State>((set, get) => ({
   signedIn: false,
   role: 'driver',
+  phone: null,
   revivors: REVIVORS,
   reviews: REVIEWS,
   jobs: SEED_JOBS,
@@ -123,8 +129,17 @@ export const useStore = create<State>((set, get) => ({
   meSubmitted: false,
   autoReplied: {},
 
-  signIn: (role) => set({ signedIn: true, role }),
-  signOut: () => set({ signedIn: false }),
+  signIn: (role, phone) => set({ signedIn: true, role, phone: phone ?? null }),
+  // Also forget my Revivor profile, so the next person who signs in on this device doesn't inherit it.
+  signOut: () =>
+    set((s) => ({
+      signedIn: false,
+      phone: null,
+      meOnboarded: false,
+      meSubmitted: false,
+      revivors: s.revivors.filter((r) => r.id !== ME_ID),
+      conversations: s.conversations.filter((c) => c.revivorId !== ME_ID),
+    })),
   setRole: (role) => set({ role }),
   setSelectedService: (selectedService) => set({ selectedService }),
 
@@ -144,7 +159,7 @@ export const useStore = create<State>((set, get) => ({
       blocked: false,
     };
     set((s) => ({ conversations: [c, ...s.conversations] }));
-    track('message_started', { revivorId, level: levelOf(r) });
+    track('message_started', { revivorId });
     return c.id;
   },
 
@@ -290,8 +305,7 @@ export const useStore = create<State>((set, get) => ({
       verifications: [
         { type: 'phone', status: 'verified', label: 'Phone number confirmed', verifiedAt: today(), verifiedBy: 'REVO team' },
         { type: 'id', status: 'not_started', label: 'Government ID not uploaded' },
-        { type: 'certification', status: 'not_started', label: 'No certification uploaded' },
-        { type: 'background', status: 'not_started', label: 'Background check not started' },
+        { type: 'ase', status: 'not_started', label: 'No ASE certificate uploaded' },
       ],
       listings: [],
       workPhotos: [],
@@ -320,38 +334,51 @@ export const useStore = create<State>((set, get) => ({
                 e.idUploaded
                   ? { type: 'id', status: 'in_review', label: 'Government ID in review' }
                   : { type: 'id', status: 'not_started', label: 'Government ID not uploaded' },
-                ...(e.certifications.length
-                  ? e.certifications.map(
-                      (c): Verification => ({ type: 'certification', status: 'in_review', label: `${c.name} in review`, documentName: c.fileName }),
+                ...(e.aseCertificates.length
+                  ? e.aseCertificates.map(
+                      (c): Verification => ({ type: 'ase', status: 'in_review', label: `${c.name} in review`, documentName: c.fileName }),
                     )
-                  : [{ type: 'certification', status: 'not_started', label: 'No certification uploaded' } as Verification]),
-                e.backgroundConsent
-                  ? { type: 'background', status: 'in_review', label: 'Background check requested' }
-                  : { type: 'background', status: 'not_started', label: 'Background check not started' },
+                  : [{ type: 'ase', status: 'not_started', label: 'No ASE certificate uploaded' } as Verification]),
               ],
             },
       ),
     }));
-    track('revivor_onboarding_submitted', { certs: e.certifications.length, photos: e.workPhotos.length });
+    track('revivor_onboarding_submitted', { aseCerts: e.aseCertificates.length, photos: e.workPhotos.length });
   },
 
-  // DEMO ONLY: stands in for the REVO team approving checks in the admin tool.
-  simulateApproval: () => {
-    const d = today();
+  // Applies the REVO team's decision from Supabase (verification_submissions) to my local profile.
+  applyReview: ({ idStatus, aseStatus, reviewedAt }) => {
+    const d = reviewedAt?.slice(0, 10) ?? today();
+    const resolve = (vs: Verification[], type: 'id' | 'ase', st: SubmissionStatus['idStatus']): Verification[] => {
+      if (st === 'rejected') {
+        const label = type === 'id' ? 'Government ID not accepted. Upload it again.' : 'ASE certificate not accepted. Upload it again.';
+        return [{ type, status: 'not_started', label }];
+      }
+      if (st !== 'verified') return vs;
+      return vs.map((v) =>
+        v.status === 'verified'
+          ? v
+          : { ...v, status: 'verified', verifiedAt: d, verifiedBy: 'REVO team', label: v.label.replace(/ in review$/, '').replace('Government ID', 'Government ID matched to selfie') },
+      );
+    };
     set((s) => ({
+      meSubmitted: idStatus !== 'rejected' && aseStatus !== 'rejected',
       revivors: s.revivors.map((r) =>
         r.id !== ME_ID
           ? r
           : {
               ...r,
-              verifications: r.verifications.map((v) =>
-                v.status === 'in_review'
-                  ? { ...v, status: 'verified', verifiedAt: d, verifiedBy: 'REVO team', label: v.label.replace(/ in review$/, '').replace('Government ID', 'Government ID matched to selfie').replace('Background check requested', 'Background check cleared') }
-                  : v,
-              ),
+              verifications: [
+                ...r.verifications.filter((v) => v.type === 'phone'),
+                ...resolve(r.verifications.filter((v) => v.type === 'id'), 'id', idStatus),
+                ...resolve(r.verifications.filter((v) => v.type === 'ase'), 'ase', aseStatus),
+              ],
             },
       ),
     }));
+    const me = get().revivors.find((r) => r.id === ME_ID);
+    if (!me || !isVerified(me)) return;
+    // DEMO ONLY: a first driver message so the newly verified Revivor has something in Messages.
     if (!get().conversations.some((c) => c.revivorId === ME_ID)) {
       const c: Conversation = {
         id: 'c-me-1',
@@ -367,6 +394,49 @@ export const useStore = create<State>((set, get) => ({
       };
       set((s) => ({ conversations: [c, ...s.conversations] }));
     }
+  },
+
+  // Rebuilds my Revivor from Supabase after sign-in, then applies the REVO team's decision.
+  hydrateMe: ({ profile, listings, submission }) => {
+    const existing = get().revivors.find((r) => r.id === ME_ID);
+    const verifications: Verification[] = [
+      { type: 'phone', status: 'verified', label: 'Phone number confirmed', verifiedAt: profile.createdAt.slice(0, 10), verifiedBy: 'REVO team' },
+      submission
+        ? { type: 'id', status: 'in_review', label: 'Government ID in review' }
+        : { type: 'id', status: 'not_started', label: 'Government ID not uploaded' },
+      ...(submission?.aseNames.length
+        ? submission.aseNames.map((name): Verification => ({ type: 'ase', status: 'in_review', label: `${name} in review` }))
+        : [{ type: 'ase', status: 'not_started', label: 'No ASE certificate uploaded' } as Verification]),
+    ];
+    const me: Revivor = {
+      id: ME_ID,
+      name: profile.displayName,
+      initials: profile.displayName
+        .split(' ')
+        .map((p) => p[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase(),
+      avatarTone: '#861A13',
+      photoUri: profile.photoUrl ?? undefined,
+      bio: profile.bio,
+      yearsExperience: profile.yearsExperience,
+      area: profile.area,
+      radiusMiles: profile.radiusMiles,
+      distanceMiles: 0,
+      memberSince: profile.createdAt.slice(0, 10),
+      verifications,
+      listings: listings
+        .filter((l): l is typeof l & { service: ServiceId } => l.service in SERVICES)
+        .map((l) => ({ id: uid('l'), service: l.service, priceMin: l.priceMin, priceMax: l.priceMax, note: l.note ?? undefined })),
+      workPhotos: Array.from({ length: submission?.workPhotoCount ?? 0 }, (_, i) => ({ id: `wp${i}`, caption: `Work photo ${i + 1}`, service: 'oil' as const })),
+      hasIntroVideo: submission?.hasIntroVideo ?? false,
+      confirmedJobs: existing?.confirmedJobs ?? 0,
+      avgReplyMins: 0,
+      availability: 'flexible',
+    };
+    set((s) => ({ revivors: [...s.revivors.filter((r) => r.id !== ME_ID), me], meOnboarded: true, meSubmitted: !!submission }));
+    if (submission) get().applyReview(submission);
   },
 
   addListing: (l) =>

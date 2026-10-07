@@ -1,11 +1,12 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StickyFooter, TopBar } from '../../components/layout';
 import { pickMedia, StepHeader } from '../../components/onboarding';
 import { Avatar, Button, Chip, Field, Icon, Label } from '../../components/ui';
 import { SERVICES, SERVICE_ORDER } from '../../data/mock';
 import type { ServiceId } from '../../data/types';
+import { saveRevivorProfile } from '../../lib/verification';
 import { useStore } from '../../store';
 import { colors, fonts, radius, shadow, space } from '../../theme';
 
@@ -13,6 +14,8 @@ const RADII = [5, 10, 15, 25];
 
 export default function OnboardingProfile() {
   const create = useStore((s) => s.createRevivorProfile);
+  const phone = useStore((s) => s.phone);
+  const [saving, setSaving] = useState(false);
   const [photo, setPhoto] = useState<string | undefined>();
   const [name, setName] = useState('');
   const [years, setYears] = useState('');
@@ -85,8 +88,9 @@ export default function OnboardingProfile() {
         <Button
           title="Continue"
           disabled={!ok}
-          onPress={() => {
-            create({
+          loading={saving}
+          onPress={async () => {
+            const draft = {
               name: displayName,
               bio: bio.trim(),
               yearsExperience: Number(years),
@@ -94,8 +98,27 @@ export default function OnboardingProfile() {
               radiusMiles,
               services,
               photoUri: photo,
-            });
-            router.push('/onboarding/evidence');
+            };
+            setSaving(true);
+            try {
+              await saveRevivorProfile({
+                legalName: name.trim().replace(/\s+/g, ' '),
+                displayName: draft.name,
+                phone,
+                bio: draft.bio,
+                area: draft.area,
+                radiusMiles: draft.radiusMiles,
+                yearsExperience: draft.yearsExperience,
+                services: draft.services,
+                photoUri: draft.photoUri,
+              });
+              create(draft);
+              router.push('/onboarding/evidence');
+            } catch (e) {
+              Alert.alert('Could not save your profile', e instanceof Error ? e.message : 'Check your connection and try again.');
+            } finally {
+              setSaving(false);
+            }
           }}
         />
       </StickyFooter>
