@@ -2,11 +2,10 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { TopBar } from '../../components/layout';
-import { LEVEL_COPY, LevelMeter, RevivorCard } from '../../components/trust';
-import { Chip, Icon, Label, NavyCard, Row } from '../../components/ui';
+import { RevivorCard } from '../../components/trust';
+import { Chip, Icon, Label, NavyCard, Row, type IconName } from '../../components/ui';
 import { DRIVER, SERVICES, SERVICE_ORDER } from '../../data/mock';
-import type { VerificationLevel } from '../../data/types';
-import { isSearchable, levelOf, ratingOf, useStore } from '../../store';
+import { isSearchable, ratingOf, useStore } from '../../store';
 import { colors, fonts, radius, space } from '../../theme';
 
 type Sort = 'recommended' | 'nearest' | 'price';
@@ -19,7 +18,6 @@ export default function Browse() {
   const setService = useStore((s) => s.setSelectedService);
   const [query, setQuery] = useState('');
   const [thisWeek, setThisWeek] = useState(false);
-  const [minLevel, setMinLevel] = useState<VerificationLevel>(1);
   const [sort, setSort] = useState<Sort>('recommended');
   const [showExplainer, setShowExplainer] = useState(true);
 
@@ -31,8 +29,7 @@ export default function Browse() {
       return l ? l.priceMin : Infinity;
     };
     return revivors
-      .filter(isSearchable) // level 0 never shows up
-      .filter((r) => levelOf(r) >= minLevel)
+      .filter(isSearchable) // unverified Revivors never show up
       .filter((r) => (service ? r.listings.some((l) => l.service === service) : true))
       .filter((r) => (thisWeek ? r.availability === 'this_week' : true))
       .filter((r) =>
@@ -45,14 +42,11 @@ export default function Browse() {
       .sort((a, b) => {
         if (sort === 'nearest') return a.distanceMiles - b.distanceMiles;
         if (sort === 'price') return minPrice(a.id) - minPrice(b.id);
-        const la = levelOf(a);
-        const lb = levelOf(b);
-        if (la !== lb) return lb - la;
         const ra = ratingOf(reviews, a.id);
         const rb = ratingOf(reviews, b.id);
         return rb.avg * Math.log(rb.count + 1) - ra.avg * Math.log(ra.count + 1);
       });
-  }, [revivors, reviews, service, query, thisWeek, minLevel, sort]);
+  }, [revivors, reviews, service, query, thisWeek, sort]);
 
   const cycleSort = () => setSort((s) => (s === 'recommended' ? 'nearest' : s === 'nearest' ? 'price' : 'recommended'));
 
@@ -100,8 +94,6 @@ export default function Browse() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               <Chip label="Within a week" selected={thisWeek} onPress={() => setThisWeek(!thisWeek)} />
               <Chip label="Flexible" selected={!thisWeek} onPress={() => setThisWeek(false)} />
-              <Chip label="Level 2+" selected={minLevel === 2} onPress={() => setMinLevel(minLevel === 2 ? 1 : 2)} icon="shield-check-outline" />
-              <Chip label="Level 3 only" selected={minLevel === 3} onPress={() => setMinLevel(minLevel === 3 ? 1 : 3)} icon="shield-check" />
             </ScrollView>
 
             {showExplainer ? <Explainer onClose={() => setShowExplainer(false)} /> : null}
@@ -142,26 +134,31 @@ function ServiceTile({ label, icon, on, onPress }: { label: string; icon: string
   );
 }
 
+const EXPLAINER_CHECKS: [IconName, string, string][] = [
+  ['card-account-details-outline', 'ID VERIFIED', 'Government ID matched to a selfie'],
+  ['certificate-outline', 'ASE CERTIFIED', 'ASE certificate reviewed by the REVO team'],
+];
+
 function Explainer({ onClose }: { onClose: () => void }) {
   return (
     <NavyCard style={{ gap: 12 }}>
       <Row style={{ justifyContent: 'space-between' }}>
         <Row gap={8}>
           <Icon name="shield-check" size={18} color={colors.cream} />
-          <Text style={styles.explTitle}>HOW REVO VERIFIES</Text>
+          <Text style={styles.explTitle}>EVERY REVIVOR IS VERIFIED</Text>
         </Row>
         <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Dismiss">
           <Icon name="close" size={18} color={colors.mutedOnNavy} />
         </Pressable>
       </Row>
-      {([1, 2, 3] as const).map((lvl) => (
-        <View key={lvl} style={{ gap: 6 }}>
-          <Row style={{ justifyContent: 'space-between' }}>
-            <Text style={styles.explLevel}>{LEVEL_COPY[lvl].title.toUpperCase()}</Text>
-            <Text style={styles.explDetail}>{LEVEL_COPY[lvl].detail}</Text>
-          </Row>
-          <LevelMeter level={lvl} onNavy />
-        </View>
+      {EXPLAINER_CHECKS.map(([icon, title, detail]) => (
+        <Row key={title} gap={10}>
+          <Icon name={icon} size={20} color={colors.cream} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.explLevel}>{title}</Text>
+            <Text style={styles.explDetail}>{detail}</Text>
+          </View>
+        </Row>
       ))}
       <Text style={styles.explDetail}>Checks are done by the REVO team. Revivors cannot edit their own badges.</Text>
     </NavyCard>

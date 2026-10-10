@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SERVICES } from '../data/mock';
 import type { Conversation, Job, Role } from '../data/types';
-import { fmtDate, fmtLongDate, jobRef, levelOf, useStore } from '../store';
+import { fmtDate, fmtLongDate, jobRef, useStore } from '../store';
 import { colors, fonts, radius, space } from '../theme';
 import { Avatar, Button, Card, Icon, Row } from './ui';
 
@@ -27,9 +27,9 @@ export function ConversationRow({ c, role }: { c: Conversation; role: Role }) {
               {name}
             </Text>
             {role === 'driver' ? (
-              <View style={styles.miniBadge}>
+              <View style={styles.miniBadge} accessibilityLabel="Verified: ID and ASE">
                 <Icon name="shield-check" size={10} color={colors.cream} />
-                <Text style={styles.miniBadgeText}>L{levelOf(r)}</Text>
+                <Text style={styles.miniBadgeText}>ASE</Text>
               </View>
             ) : null}
             {c.blocked ? <Text style={styles.blocked}>BLOCKED</Text> : null}

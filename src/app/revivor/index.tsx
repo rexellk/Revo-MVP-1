@@ -1,22 +1,55 @@
-import { Redirect, router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Redirect, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { TopBar } from '../../components/layout';
-import { LEVEL_COPY, LevelMeter } from '../../components/trust';
+import { CHECK_META } from '../../components/trust';
 import { Banner, Button, Card, Divider, Icon, Label, NavyCard, Row } from '../../components/ui';
 import { SERVICES } from '../../data/mock';
-import { levelOf, ME_ID, priceText, ratingOf, useStore } from '../../store';
-import { colors, fonts, radius, space } from '../../theme';
+import { deleteListing, fetchLatestSubmission } from '../../lib/verification';
+import { isVerified, ME_ID, priceText, ratingOf, REQUIRED_CHECKS, useStore } from '../../store';
+import { colors, fonts, space } from '../../theme';
 
 export default function Dashboard() {
   const me = useStore((s) => s.revivors.find((r) => r.id === ME_ID));
   const reviews = useStore((s) => s.reviews);
   const submitted = useStore((s) => s.meSubmitted);
-  const simulate = useStore((s) => s.simulateApproval);
+  const applyReview = useStore((s) => s.applyReview);
   const remove = useStore((s) => s.removeListing);
+  const [checking, setChecking] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  // Pull the REVO team's decision from Supabase every time the dashboard opens.
+  const refresh = useCallback(async () => {
+    setChecking(true);
+    try {
+      const review = await fetchLatestSubmission();
+      if (review) {
+        applyReview(review);
+        setNote(review.reviewerNote);
+      }
+    } catch {
+      setNote('Could not reach REVO. Tap Check status to try again.');
+    } finally {
+      setChecking(false);
+    }
+  }, [applyReview]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (submitted) refresh();
+    }, [submitted, refresh]),
+  );
 
   if (!me) return <Redirect href="/onboarding" />;
 
-  const level = levelOf(me);
+  const verified = isVerified(me);
+  // Status of each required check. With several ASE certificates, any verified one counts.
+  const statusOf = (t: (typeof REQUIRED_CHECKS)[number]) => {
+    const vs = me.verifications.filter((v) => v.type === t);
+    if (vs.some((v) => v.status === 'verified')) return 'verified';
+    if (vs.some((v) => v.status === 'in_review')) return 'in_review';
+    return 'not_started';
+  };
   const first = me.name.split(' ')[0];
   const { avg, count } = ratingOf(reviews, ME_ID);
   const inReview = me.verifications.some((v) => v.status === 'in_review');
@@ -32,7 +65,7 @@ export default function Dashboard() {
               <Icon name="alert-circle-outline" size={22} color={colors.brick} />
               <Text style={styles.cardTitle}>Finish verification</Text>
             </Row>
-            <Text style={styles.sub}>Upload your ID and work photos so the REVO team can verify you. Until then drivers can’t find you.</Text>
+            <Text style={styles.sub}>Upload your ID, your ASE certificate and work photos so the REVO team can verify you. Until then drivers can’t find you.</Text>
             <Button title="Continue setup" onPress={() => router.push('/onboarding/evidence')} />
           </Card>
         ) : null}
@@ -41,26 +74,40 @@ export default function Dashboard() {
           <Row style={{ justifyContent: 'space-between' }}>
             <Row gap={10}>
               <View style={styles.shield}>
-                <Icon name={level ? 'shield-check' : 'shield-outline'} size={20} color={colors.cream} />
+                <Icon name={verified ? 'shield-check' : 'shield-outline'} size={20} color={colors.cream} />
               </View>
               <View>
                 <Text style={styles.navyTitle}>Verification Status</Text>
                 <Text style={styles.navySub}>
-                  {level ? `Verified · ${LEVEL_COPY[level].title}` : inReview ? 'In review by REVO' : 'Not verified'}
+                  {verified ? 'Verified · ID + ASE' : inReview ? 'In review by REVO' : 'Not verified'}
                 </Text>
               </View>
             </Row>
           </Row>
-          <LevelMeter level={level} onNavy />
+          {REQUIRED_CHECKS.map((t) => {
+            const st = statusOf(t);
+            return (
+              <Row key={t} style={{ justifyContent: 'space-between' }}>
+                <Row gap={8}>
+                  <Icon
+                    name={st === 'verified' ? 'check-circle' : st === 'in_review' ? 'clock-outline' : 'circle-outline'}
+                    size={18}
+                    color={st === 'verified' ? colors.cream : colors.mutedOnNavy}
+                  />
+                  <Text style={styles.navySub}>{CHECK_META[t].title}</Text>
+                </Row>
+                <Text style={[styles.navyTitle, { fontSize: 12 }]}>
+                  {st === 'verified' ? 'VERIFIED' : st === 'in_review' ? 'IN REVIEW' : 'NEEDED'}
+                </Text>
+              </Row>
+            );
+          })}
+          <View style={styles.navyDivider} />
           <Row style={{ justifyContent: 'space-between' }}>
             <Text style={styles.navySub}>Visible in driver search</Text>
-            <Text style={[styles.navyTitle, { fontSize: 13 }]}>{level ? 'YES' : 'NO'}</Text>
+            <Text style={[styles.navyTitle, { fontSize: 13 }]}>{verified ? 'YES' : 'NO'}</Text>
           </Row>
-          {level > 0 && level < 3 ? (
-            <Text style={styles.navySub}>
-              Next: {level === 1 ? 'upload a certification to reach Level 2.' : 'complete the background check to reach Level 3.'}
-            </Text>
-          ) : null}
+          {!verified ? <Text style={styles.navySub}>Both checks are required before drivers can find you.</Text> : null}
         </NavyCard>
 
         <Row gap={10}>
@@ -86,7 +133,18 @@ export default function Dashboard() {
                   <Text style={styles.cardTitle}>{SERVICES[l.service].name}</Text>
                   <Text style={[styles.sub, !l.priceMin && { color: colors.brick }]}>{priceText(l)}</Text>
                 </Pressable>
-                <Pressable onPress={() => remove(l.id)} hitSlop={8} accessibilityLabel="Remove listing">
+                <Pressable
+                  onPress={async () => {
+                    try {
+                      await deleteListing(l.service);
+                      remove(l.id);
+                    } catch (e) {
+                      Alert.alert('Could not remove', e instanceof Error ? e.message : 'Check your connection and try again.');
+                    }
+                  }}
+                  hitSlop={8}
+                  accessibilityLabel="Remove listing"
+                >
                   <Icon name="trash-can-outline" size={20} color={colors.muted} />
                 </Pressable>
               </Row>
@@ -97,15 +155,16 @@ export default function Dashboard() {
 
         <Button title="Preview my profile" variant="outline" icon="account-eye-outline" onPress={() => router.push({ pathname: '/revivors/[id]', params: { id: ME_ID, preview: '1' } })} />
 
+        {note ? <Banner icon="information-outline" text={note} /> : null}
+
         {inReview ? (
-          <View style={styles.demo}>
-            <Label>Prototype controls</Label>
-            <Text style={styles.sub}>Stands in for the REVO team approving your checks in the admin tool.</Text>
-            <Button title="Simulate REVO approval" variant="navy" small onPress={simulate} />
-          </View>
+          <Card style={{ gap: 10 }}>
+            <Text style={styles.sub}>The REVO team is reviewing your ID and ASE certificate. This page updates when they finish.</Text>
+            <Button title="Check status" variant="navy" small icon="refresh" loading={checking} onPress={refresh} />
+          </Card>
         ) : null}
 
-        {level > 0 ? <Banner icon="check-decagram" text="You're live. Drivers near you can find and message you." /> : null}
+        {verified ? <Banner icon="check-decagram" text="You're live. Drivers near you can find and message you." /> : null}
       </ScrollView>
     </View>
   );
@@ -126,7 +185,7 @@ const styles = StyleSheet.create({
   shield: { width: 38, height: 38, borderRadius: 19, borderWidth: 1.5, borderColor: colors.lineOnNavy, alignItems: 'center', justifyContent: 'center' },
   navyTitle: { fontFamily: fonts.bold, fontSize: 16, color: colors.cream },
   navySub: { fontFamily: fonts.medium, fontSize: 13, color: colors.mutedOnNavy },
+  navyDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.lineOnNavy },
   statVal: { fontFamily: fonts.extrabold, fontSize: 20, color: colors.ink },
   link: { fontFamily: fonts.bold, fontSize: 12, letterSpacing: 0.8, color: colors.brick },
-  demo: { borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.muted, borderRadius: radius.lg, padding: space.lg, gap: 10 },
 });

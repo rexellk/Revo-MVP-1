@@ -20,7 +20,7 @@ export default function Submitted() {
           step={3}
           total={3}
           title="YOU'RE IN THE QUEUE"
-          body="The REVO team reviews new Revivors within 2 business days. You show up in driver search as soon as your ID is verified."
+          body="The REVO team reviews new Revivors within 2 business days. You show up in driver search as soon as both your ID and ASE certification are verified."
         />
         <Card style={{ gap: 4 }}>
           <Label>Your checks</Label>

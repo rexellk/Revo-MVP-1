@@ -16,18 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { track } from '../../analytics';
 import { StickyFooter } from '../../components/layout';
 import { ActionSheet } from '../../components/sheet';
-import {
-  LEVEL_COPY,
-  LevelBadge,
-  LevelMeter,
-  NewBadge,
-  ReviewItem,
-  VerificationRow,
-  WorkPhotoTile,
-} from '../../components/trust';
+import { CHECK_META, NewBadge, ReviewItem, VerificationRow, VerifiedBadge, WorkPhotoTile } from '../../components/trust';
 import { Avatar, Banner, Body, Button, Card, Divider, Icon, Label, NavyGradient, Row } from '../../components/ui';
 import { SERVICES } from '../../data/mock';
-import { fmtLongDate, levelOf, priceText, ratingOf, sortChecks, useStore } from '../../store';
+import { fmtLongDate, isVerified, missingChecks, priceText, ratingOf, sortChecks, useStore } from '../../store';
 import { colors, fonts, radius, space } from '../../theme';
 
 type Section = 'verification' | 'intro' | 'about' | 'photos' | 'services' | 'reviews';
@@ -48,7 +40,7 @@ export default function TrustProfile() {
   const isPreview = preview === '1';
 
   useEffect(() => {
-    if (r && !isPreview) track('profile_viewed', { revivorId: r.id, level: levelOf(r) });
+    if (r && !isPreview) track('profile_viewed', { revivorId: r.id });
   }, [r?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!r) {
@@ -59,12 +51,12 @@ export default function TrustProfile() {
     );
   }
 
-  const level = levelOf(r);
+  const verified = isVerified(r);
   const reviews = allReviews.filter((x) => x.revivorId === r.id);
   const { avg, count } = ratingOf(allReviews, r.id);
   const first = r.name.split(' ')[0];
   const shown = sortChecks(r.verifications).filter((v) => v.status !== 'not_started');
-  const pending = r.verifications.filter((v) => v.status === 'not_started' && v.type !== 'phone');
+  const pending = missingChecks(r);
   const contentWidth = Math.min(width, 560) - space.lg * 2 - space.lg * 2;
   const photoSize = (contentWidth - 16) / 3;
 
@@ -116,7 +108,7 @@ export default function TrustProfile() {
               {r.distanceMiles ? ` · ${r.distanceMiles.toFixed(1)} mi away` : ''}
             </Text>
             <Row gap={6}>
-              <LevelBadge level={level} onNavy />
+              <VerifiedBadge verified={verified} onNavy />
               {r.confirmedJobs === 0 ? <NewBadge /> : null}
             </Row>
           </View>
@@ -139,17 +131,14 @@ export default function TrustProfile() {
           <Card onLayout={(e) => setSectionY('verification', e)} style={{ gap: 4 }}>
             <Row style={{ justifyContent: 'space-between' }}>
               <Label>Verification</Label>
-              <Text style={styles.levelTitle}>{LEVEL_COPY[level].title.toUpperCase()}</Text>
+              <Text style={styles.levelTitle}>{verified ? 'ID + ASE VERIFIED' : 'NOT VERIFIED'}</Text>
             </Row>
-            <View style={{ marginVertical: 10 }}>
-              <LevelMeter level={level} />
-            </View>
             {shown.map((v, i) => (
               <VerificationRow
                 key={`${v.type}-${i}`}
                 v={v}
                 onPress={
-                  v.type === 'certification' && v.documentName && v.status === 'verified'
+                  v.type === 'ase' && v.documentName && v.status === 'verified'
                     ? () => {
                         track('credential_opened', { revivorId: r.id, doc: v.documentName });
                         router.push({ pathname: '/credential', params: { revivorId: r.id, index: String(r.verifications.indexOf(v)) } });
@@ -159,7 +148,7 @@ export default function TrustProfile() {
               />
             ))}
             {pending.length ? (
-              <Text style={styles.fine}>Not yet completed: {pending.map((v) => v.type === 'background' ? 'background check' : v.type === 'id' ? 'ID' : 'certification').join(', ')}.</Text>
+              <Text style={styles.fine}>Not yet verified: {pending.map((t) => CHECK_META[t].title).join(', ')}. Hidden from drivers until both are verified.</Text>
             ) : null}
             <Divider style={{ marginVertical: 8 }} />
             <Row gap={8}>

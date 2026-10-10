@@ -25,7 +25,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "REVO uses your photos so you can upload your ID, ASE certificates and photos of your work for verification.",
+          "cameraPermission": "REVO uses your camera so you can photograph your ID, take a selfie and capture your ASE certificates for verification."
+        }
+      ]
     ],
     "scheme": "revo",
     "experiments": {

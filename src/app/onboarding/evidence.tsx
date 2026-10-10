@@ -1,31 +1,54 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StickyFooter, TopBar } from '../../components/layout';
-import { pickMedia, StepHeader } from '../../components/onboarding';
+import { isPdf, pickFile, pickMedia, showPhotoSourceSheetIOS, StepHeader, type PhotoSource } from '../../components/onboarding';
 import { ActionSheet } from '../../components/sheet';
 import { Banner, Button, Card, Icon, Label, Row, type IconName } from '../../components/ui';
-import { useStore } from '../../store';
+import { submitVerification } from '../../lib/verification';
+import { ME_ID, useStore } from '../../store';
 import { colors, fonts, radius, space } from '../../theme';
 
-const CERT_TYPES = ['ASE certification', 'WCC Automotive Program', 'Manufacturer training', 'Other trade certificate'];
+// ASE certifications that cover the services REVO offers. At least one is required to be listed.
+const ASE_CERTS = [
+  'ASE Certified: Maintenance & Light Repair (G1)',
+  'ASE Certified: Brakes (A5)',
+  'ASE Certified: Electrical Systems (A6)',
+  'ASE Certified: Engine Performance (A8)',
+  'ASE Master Technician',
+];
 
 export default function Evidence() {
   const submit = useStore((s) => s.submitEvidence);
+  const me = useStore((s) => s.revivors.find((r) => r.id === ME_ID));
+  const [sending, setSending] = useState(false);
   const [idFront, setIdFront] = useState<string | null>(null);
   const [selfie, setSelfie] = useState<string | null>(null);
   const [certs, setCerts] = useState<{ name: string; fileName: string; uri: string }[]>([]);
-  const [bgConsent, setBgConsent] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [video, setVideo] = useState<string | null>(null);
   const [certSheet, setCertSheet] = useState(false);
+  // Where the next photo goes. Non-null opens the brand source sheet (Android and web; iOS uses the native one).
+  const [photoFor, setPhotoFor] = useState<{ onPicked: (uri: string) => void; allowPdf: boolean } | null>(null);
 
-  const ok = !!idFront && !!selfie && photos.length >= 3;
+  const ok = !!idFront && !!selfie && certs.length >= 1 && photos.length >= 1;
 
-  const addCert = async (name: string) => {
-    const uri = await pickMedia();
-    if (uri) setCerts([...certs, { name, uri, fileName: `${name.replace(/\s+/g, '_')}.jpg` }]);
+  const pickInto = async (from: PhotoSource, onPicked: (uri: string) => void, allowPdf: boolean) => {
+    try {
+      const uri = from === 'files' ? await pickFile(allowPdf) : await pickMedia('images', from);
+      if (uri) onPicked(uri);
+    } catch (e) {
+      Alert.alert('Could not add the photo', e instanceof Error ? e.message : 'Try another option.');
+    }
   };
+
+  // allowPdf: scanned IDs and certificates often come as PDFs from the Files app.
+  const askPhoto = (onPicked: (uri: string) => void, allowPdf = false) => {
+    if (!showPhotoSourceSheetIOS((from) => pickInto(from, onPicked, allowPdf))) setPhotoFor({ onPicked, allowPdf });
+  };
+
+  const addCert = (name: string) =>
+    askPhoto((uri) => setCerts((cs) => [...cs, { name, uri, fileName: `${name.replace(/[^A-Za-z0-9]+/g, '_')}.${isPdf(uri) ? 'pdf' : 'jpg'}` }]), true);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -35,18 +58,18 @@ export default function Evidence() {
           step={2}
           total={3}
           title="PROVE IT"
-          body="The REVO team checks everything here by hand. Your badges come only from these checks, so drivers know they're real."
+          body="Every Revivor needs a verified ID and an ASE certification. The REVO team checks both by hand, so drivers know your badge is real."
         />
 
-        <Section title="Identity" level="Required · Level 1" icon="card-account-details-outline">
-          <UploadRow label="Photo of your driver's license or state ID" done={!!idFront} uri={idFront} onPress={async () => setIdFront((await pickMedia()) ?? idFront)} />
-          <UploadRow label="A selfie, so we can match your face to the ID" done={!!selfie} uri={selfie} onPress={async () => setSelfie((await pickMedia()) ?? selfie)} />
+        <Section title="Identity" requirement="Required" icon="card-account-details-outline">
+          <UploadRow label="Photo of your driver's license or state ID" done={!!idFront} uri={idFront} onPress={() => askPhoto(setIdFront, true)} />
+          <UploadRow label="A selfie, so we can match your face to the ID" done={!!selfie} uri={selfie} onPress={() => askPhoto(setSelfie)} />
         </Section>
 
-        <Section title="Certifications" level="Needed for Level 2" icon="certificate-outline">
+        <Section title="ASE certification" requirement="Required · at least one" icon="certificate-outline">
           {certs.map((c, i) => (
             <Row key={i} gap={12} style={styles.fileRow}>
-              <Image source={{ uri: c.uri }} style={styles.thumb} />
+              <Thumb uri={c.uri} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.fileName}>{c.name}</Text>
                 <Text style={styles.hint}>Uploaded · REVO will review</Text>
@@ -56,19 +79,11 @@ export default function Evidence() {
               </Pressable>
             </Row>
           ))}
-          <Button title="Add certificate" variant="outline" icon="plus" small onPress={() => setCertSheet(true)} />
+          <Button title="Add ASE certificate" variant="outline" icon="plus" small onPress={() => setCertSheet(true)} />
+          <Text style={styles.hint}>A photo or scan of the certificate. The name on it must match your ID.</Text>
         </Section>
 
-        <Section title="Background check" level="Needed for Level 3" icon="shield-check-outline">
-          <Pressable onPress={() => setBgConsent(!bgConsent)} style={styles.consent}>
-            <View style={[styles.box, bgConsent && styles.boxOn]}>{bgConsent ? <Icon name="check-bold" size={14} color={colors.cream} /> : null}</View>
-            <Text style={[styles.hint, { flex: 1, color: colors.ink, fontSize: 13.5 }]}>
-              I agree to a background check run by REVO’s screening partner. I’ll get a separate email to complete it.
-            </Text>
-          </Pressable>
-        </Section>
-
-        <Section title="Photos of your work" level="Required · at least 3" icon="image-multiple-outline">
+        <Section title="Photos of your work" requirement="Required · at least 1" icon="image-multiple-outline">
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {photos.map((u, i) => (
               <Pressable key={i} onPress={() => setPhotos(photos.filter((_, j) => j !== i))}>
@@ -80,10 +95,7 @@ export default function Evidence() {
             ))}
             {photos.length < 6 ? (
               <Pressable
-                onPress={async () => {
-                  const u = await pickMedia();
-                  if (u) setPhotos([...photos, u]);
-                }}
+                onPress={() => askPhoto((u) => setPhotos((ps) => [...ps, u]))}
                 style={[styles.photo, styles.addPhoto]}
                 testID="add-photo"
                 accessibilityLabel="Add work photo"
@@ -95,7 +107,7 @@ export default function Evidence() {
           <Text style={styles.hint}>Before and after shots of real jobs work best. No customer plates or faces.</Text>
         </Section>
 
-        <Section title="30-second intro video" level="Optional · helps new Revivors" icon="video-outline">
+        <Section title="30-second intro video" requirement="Optional · helps new Revivors" icon="video-outline">
           <UploadRow
             label={video ? 'Intro video added' : 'Say hi, where you have worked, and what you are best at'}
             done={!!video}
@@ -103,38 +115,65 @@ export default function Evidence() {
           />
         </Section>
 
-        <Banner icon="lock-outline" tone="cream" text="Your ID and selfie are only seen by the REVO team. Drivers see your badges and can open the certificates you upload here." />
+        <Banner icon="lock-outline" tone="cream" text="Your ID and selfie are only seen by the REVO team. Drivers see your badge and can open the ASE certificates you upload here." />
       </ScrollView>
       <StickyFooter>
         <Button
-          title="Submit for review"
+          title={sending ? 'Uploading...' : 'Submit for review'}
           disabled={!ok}
-          onPress={() => {
-            submit({ idUploaded: true, backgroundConsent: bgConsent, certifications: certs.map(({ name, fileName }) => ({ name, fileName })), workPhotos: photos, introVideo: !!video });
-            router.replace('/onboarding/submitted');
+          loading={sending}
+          onPress={async () => {
+            if (!idFront || !selfie || !me) return;
+            setSending(true);
+            try {
+              await submitVerification({
+                idPhotoUri: idFront,
+                selfieUri: selfie,
+                aseCertificates: certs.map(({ name, uri }) => ({ name, uri })),
+                workPhotoUris: photos,
+                introVideoUri: video,
+              });
+              submit({ idUploaded: true, aseCertificates: certs.map(({ name, fileName }) => ({ name, fileName })), workPhotos: photos, introVideo: !!video });
+              router.replace('/onboarding/submitted');
+            } catch (e) {
+              Alert.alert('Could not submit', e instanceof Error ? e.message : 'Check your connection and try again.');
+            } finally {
+              setSending(false);
+            }
           }}
         />
       </StickyFooter>
 
       <ActionSheet
         visible={certSheet}
-        title="Add certificate"
-        message="What kind of certificate is it?"
+        title="Add ASE certificate"
+        message="Which ASE certification is it?"
         onClose={() => setCertSheet(false)}
-        options={CERT_TYPES.map((label) => ({ label, onPress: () => addCert(label) }))}
+        options={ASE_CERTS.map((label) => ({ label, onPress: () => addCert(label) }))}
+      />
+
+      <ActionSheet
+        visible={photoFor !== null}
+        title="Add photo"
+        onClose={() => setPhotoFor(null)}
+        options={[
+          { label: 'Take photo', icon: 'camera-outline', onPress: () => photoFor && pickInto('camera', photoFor.onPicked, photoFor.allowPdf) },
+          { label: 'Photo library', icon: 'image-outline', onPress: () => photoFor && pickInto('library', photoFor.onPicked, photoFor.allowPdf) },
+          { label: 'Choose file', icon: 'file-document-outline', onPress: () => photoFor && pickInto('files', photoFor.onPicked, photoFor.allowPdf) },
+        ]}
       />
     </View>
   );
 }
 
-function Section({ title, level, icon, children }: { title: string; level: string; icon: IconName; children: React.ReactNode }) {
+function Section({ title, requirement, icon, children }: { title: string; requirement: string; icon: IconName; children: React.ReactNode }) {
   return (
     <Card style={{ gap: 12 }}>
       <Row gap={10}>
         <Icon name={icon} size={22} color={colors.brick} />
         <View style={{ flex: 1 }}>
           <Text style={styles.secTitle}>{title}</Text>
-          <Label style={{ fontSize: 10 }}>{level}</Label>
+          <Label style={{ fontSize: 10 }}>{requirement}</Label>
         </View>
       </Row>
       {children}
@@ -142,11 +181,21 @@ function Section({ title, level, icon, children }: { title: string; level: strin
   );
 }
 
+/** Image preview, or a PDF icon for scanned documents. */
+function Thumb({ uri }: { uri: string }) {
+  if (!isPdf(uri)) return <Image source={{ uri }} style={styles.thumb} />;
+  return (
+    <View style={[styles.thumb, { backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' }]}>
+      <Icon name="file-pdf-box" size={26} color={colors.brick} />
+    </View>
+  );
+}
+
 function UploadRow({ label, done, uri, onPress }: { label: string; done: boolean; uri?: string | null; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.fileRow, pressed && { opacity: 0.8 }]}>
       {uri ? (
-        <Image source={{ uri }} style={styles.thumb} />
+        <Thumb uri={uri} />
       ) : (
         <View style={[styles.thumb, { backgroundColor: done ? colors.ink : colors.creamDeep, alignItems: 'center', justifyContent: 'center' }]}>
           <Icon name={done ? 'check-bold' : 'upload'} size={20} color={done ? colors.cream : colors.ink} />
@@ -164,9 +213,6 @@ const styles = StyleSheet.create({
   thumb: { width: 44, height: 44, borderRadius: radius.sm },
   fileName: { fontFamily: fonts.semibold, fontSize: 14, color: colors.ink },
   hint: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted, lineHeight: 17 },
-  consent: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  box: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  boxOn: { backgroundColor: colors.brick, borderColor: colors.brick },
   photo: { width: 74, height: 74, borderRadius: radius.md },
   addPhoto: { borderWidth: 2, borderStyle: 'dashed', borderColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
   remove: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.overlay, alignItems: 'center', justifyContent: 'center' },

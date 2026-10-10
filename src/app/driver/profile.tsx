@@ -1,15 +1,16 @@
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { TopBar } from '../../components/layout';
 import { Avatar, Button, Card, Divider, Label, ListItem } from '../../components/ui';
 import { DRIVER } from '../../data/mock';
+import { signOutBackend } from '../../lib/auth';
+import { enterRevivorSide } from '../../lib/session';
 import { useStore } from '../../store';
 import { colors, fonts, space } from '../../theme';
 
 export default function DriverProfile() {
   const signOut = useStore((s) => s.signOut);
   const setRole = useStore((s) => s.setRole);
-  const meOnboarded = useStore((s) => s.meOnboarded);
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopBar title="Profile" />
@@ -45,7 +46,8 @@ export default function DriverProfile() {
               icon="logout"
               title="Log out"
               danger
-              onPress={() => {
+              onPress={async () => {
+                await signOutBackend();
                 signOut();
                 router.replace('/');
               }}
@@ -57,9 +59,13 @@ export default function DriverProfile() {
           title="Earn as a Revivor"
           variant="navy"
           icon="wrench"
-          onPress={() => {
+          onPress={async () => {
             setRole('revivor');
-            router.replace(meOnboarded ? '/revivor' : '/onboarding');
+            try {
+              await enterRevivorSide();
+            } catch (e) {
+              Alert.alert('Could not open the Revivor side', e instanceof Error ? e.message : 'Try again.');
+            }
           }}
         />
         <Text style={styles.version}>VERSION 0.1.0 · MVP1 PROTOTYPE</Text>

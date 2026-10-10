@@ -1,27 +1,19 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SERVICES } from '../data/mock';
-import type { Review, Revivor, ServiceId, Verification, VerificationLevel } from '../data/types';
-import { fmtLongDate, levelOf, priceText, ratingOf } from '../store';
+import type { Review, Revivor, ServiceId, Verification } from '../data/types';
+import { fmtLongDate, isVerified, priceText, ratingOf } from '../store';
 import { colors, fonts, radius, space } from '../theme';
 import { Avatar, Body, Card, Icon, Row, Stars, type IconName } from './ui';
 
-export const LEVEL_COPY: Record<VerificationLevel, { title: string; detail: string }> = {
-  0: { title: 'Not verified', detail: 'Hidden from search until REVO verifies ID' },
-  1: { title: 'Level 1', detail: 'ID verified' },
-  2: { title: 'Level 2', detail: 'ID + certification verified' },
-  3: { title: 'Level 3', detail: 'ID + certification + background check' },
-};
-
 export const CHECK_META: Record<Verification['type'], { title: string; icon: IconName }> = {
   id: { title: 'Identity', icon: 'card-account-details-outline' },
-  certification: { title: 'Certification', icon: 'certificate-outline' },
-  background: { title: 'Background check', icon: 'shield-check-outline' },
+  ase: { title: 'ASE certification', icon: 'certificate-outline' },
   phone: { title: 'Phone', icon: 'cellphone-check' },
 };
 
-/** Compact pill used on cards: shield + "VERIFIED · LEVEL 3" */
-export function LevelBadge({ level, onNavy }: { level: VerificationLevel; onNavy?: boolean }) {
-  if (level === 0)
+/** Compact pill used on cards: shield + "VERIFIED · ID + ASE" */
+export function VerifiedBadge({ verified, onNavy }: { verified: boolean; onNavy?: boolean }) {
+  if (!verified)
     return (
       <View style={[s.badge, { backgroundColor: colors.creamDeep }]}>
         <Icon name="shield-alert-outline" size={12} color={colors.muted} />
@@ -33,7 +25,7 @@ export function LevelBadge({ level, onNavy }: { level: VerificationLevel; onNavy
   return (
     <View style={[s.badge, { backgroundColor: bg }]}>
       <Icon name="shield-check" size={12} color={fg} />
-      <Text style={[s.badgeText, { color: fg }]}>VERIFIED · LEVEL {level}</Text>
+      <Text style={[s.badgeText, { color: fg }]}>VERIFIED · ID + ASE</Text>
     </View>
   );
 }
@@ -43,25 +35,6 @@ export function NewBadge() {
     <View style={[s.badge, { backgroundColor: colors.brick }]}>
       <Text style={[s.badgeText, { color: colors.cream }]}>NEW REVIVOR</Text>
     </View>
-  );
-}
-
-/** Three-step meter of the verification levels. */
-export function LevelMeter({ level, onNavy }: { level: VerificationLevel; onNavy?: boolean }) {
-  return (
-    <Row gap={4}>
-      {[1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={{
-            flex: 1,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: i <= level ? (onNavy ? colors.cream : colors.brick) : onNavy ? colors.lineOnNavy : colors.line,
-          }}
-        />
-      ))}
-    </Row>
   );
 }
 
@@ -113,10 +86,9 @@ export function RevivorCard({
   service: ServiceId | null;
   onPress: () => void;
 }) {
-  const level = levelOf(r);
   const { avg, count } = ratingOf(reviews, r.id);
   const listing = service ? r.listings.find((l) => l.service === service) : r.listings[0];
-  const certs = r.verifications.filter((v) => v.type === 'certification' && v.status === 'verified');
+  const certs = r.verifications.filter((v) => v.type === 'ase' && v.status === 'verified');
   return (
     <Card onPress={onPress} style={{ gap: space.md }}>
       <Row gap={14} style={{ alignItems: 'flex-start' }}>
@@ -132,7 +104,7 @@ export function RevivorCard({
             ) : null}
           </Row>
           <Row gap={6} style={{ flexWrap: 'wrap' }}>
-            <LevelBadge level={level} />
+            <VerifiedBadge verified={isVerified(r)} />
             {r.confirmedJobs === 0 ? <NewBadge /> : null}
           </Row>
           {count ? (

@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { TopBar } from '../../components/layout';
-import { LevelBadge, StatusPill, CHECK_META } from '../../components/trust';
+import { CHECK_META, StatusPill, VerifiedBadge } from '../../components/trust';
 import { Avatar, Button, Card, Divider, Icon, Label, ListItem, Row } from '../../components/ui';
-import { levelOf, ME_ID, sortChecks, useStore } from '../../store';
+import { signOutBackend } from '../../lib/auth';
+import { isVerified, ME_ID, sortChecks, useStore } from '../../store';
 import { colors, fonts, space } from '../../theme';
 
 export default function RevivorProfile() {
@@ -21,7 +22,7 @@ export default function RevivorProfile() {
           <Text style={styles.sub}>
             Revivor · {me.area} · {me.yearsExperience} yrs experience
           </Text>
-          <LevelBadge level={levelOf(me)} />
+          <VerifiedBadge verified={isVerified(me)} />
         </View>
 
         <Card style={{ gap: 4 }}>
@@ -56,7 +57,8 @@ export default function RevivorProfile() {
             icon="logout"
             title="Log out"
             danger
-            onPress={() => {
+            onPress={async () => {
+              await signOutBackend();
               signOut();
               router.replace('/');
             }}

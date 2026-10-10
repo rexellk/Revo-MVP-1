@@ -1,4 +1,5 @@
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRef } from 'react';
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, radius, space } from '../theme';
 import { Icon, type IconName } from './ui';
@@ -25,8 +26,16 @@ export function ActionSheet({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  // iOS can't present another screen (image picker, next sheet) while this modal is still
+  // closing, so the chosen action waits for onDismiss there. Elsewhere it runs right away.
+  const pending = useRef<(() => void) | null>(null);
+  const runPending = () => {
+    const fn = pending.current;
+    pending.current = null;
+    fn?.();
+  };
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} onDismiss={runPending}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         {title ? <Text style={styles.title}>{title.toUpperCase()}</Text> : null}
@@ -36,8 +45,9 @@ export function ActionSheet({
             <Pressable
               key={o.label}
               onPress={() => {
+                pending.current = o.onPress;
                 onClose();
-                o.onPress();
+                if (Platform.OS !== 'ios') runPending();
               }}
               style={({ pressed }) => [styles.option, i > 0 && styles.sep, pressed && { backgroundColor: colors.creamSoft }]}
             >
