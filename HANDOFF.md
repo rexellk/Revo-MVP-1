@@ -32,7 +32,7 @@ The **Revivor (supply) side is real**: a mechanic signs in, builds a profile, up
 **Revivor app**
 - Onboarding saves to Supabase with loading states and clear error messages.
 - "Submit for review" uploads everything and only moves on when the upload succeeds.
-- Dashboard reads the team's decision on open and via **Check status**; "Simulate REVO approval" is gone. Rejections show the reviewer's note and reopen "Finish verification".
+- Dashboard reads the team's decision on open and via **Refresh status** (any state); "Simulate REVO approval" is gone. Rejections show the reviewer's note and reopen "Finish verification".
 - Services: add, price and delete all save to Supabase.
 
 **Sign-in**
@@ -67,10 +67,10 @@ Ordered by how much they change what gets built next. Recommendation in bold.
 ## 4. Next steps
 
 **Rexell, in the app and dashboard (no decision needed)**
-1. Full simulator run: mechanic signs in, onboards, submits; approve in Supabase; **Check status** shows Verified; log out and back in lands on the Dashboard; services and prices survive re-login.
+1. Full simulator run: mechanic signs in, onboards, submits; approve in Supabase; **Refresh status** shows Verified; log out and back in lands on the Dashboard; services and prices survive re-login.
 2. Delete test data (list in section 5).
 3. Authentication > Sign In / Providers: turn **off** "Allow anonymous sign-ins" (no longer used).
-4. Optional: drop the 4 unused columns on `verification_submissions` (SQL is in a comment in `20261007010000_split_profiles.sql`).
+4. Drop the 4 always-NULL columns on `verification_submissions` (`full_name`, `area`, `years_experience`, `bio`): paste `supabase/migrations/20261010010000_drop_unused_submission_columns.sql` into the SQL Editor and run it.
 
 **Then, depending on D1**
 - **If A (persona tests):** PostHog in `src/analytics.ts` -> D5 (a) and (c) -> write the test script and run sessions.
@@ -91,6 +91,10 @@ Ordered by how much they change what gets built next. Recommendation in bold.
 2. `20261007010000_split_profiles.sql`: `profiles`, `revivor_profiles`, `profile-photos` bucket, `review_queue` view, PDF support, `private.is_verified_revivor()`. Old name/bio columns on submissions kept but unused.
 3. `20261007020000_sync_phone_confirmed.sql`: `phone_confirmed` follows Supabase Auth's verified phone (stays false in demo mode).
 4. `20261007030000_revivor_listings.sql`: services + price ranges, one row per service.
+5. `20261010000000_submissions_overview.sql`: `submissions_overview` view, every submission (any status) with legal name, display name and phone.
+6. `20261010010000_drop_unused_submission_columns.sql`: **not applied**, run by hand (DROP).
+
+A profile without a submission is normal: the profile saves at onboarding step 1, the submission at step 2.
 
 Security advisor: no errors. Expected warnings: "Anonymous Access Policies" (goes away once anonymous sign-ins are off) and "Leaked Password Protection" (demo passwords only).
 
@@ -101,10 +105,10 @@ Security advisor: no errors. Expected warnings: "Anonymous Access Policies" (goe
 - After approval: profile, photo and services become visible to signed-in users; phone and ID stay private.
 
 ### How the REVO team reviews a Revivor
-1. Table Editor > `review_queue`: who is waiting (legal name, phone, file paths). Copy `submission_id`.
+1. Table Editor > `review_queue`: who is waiting (legal name, phone, file paths). Copy `submission_id`. For everyone, including already approved or rejected, use `submissions_overview`.
 2. Storage > `verification-docs` > their user id > dated folder: check ID, selfie, ASE, work photos. Profile photo is in `profile-photos`.
 3. Table Editor > `verification_submissions` > that row: set `id_status` and `ase_status` from the dropdown (`verified` / `rejected`), add `reviewer_note` if rejecting, save.
-4. The Revivor sees it on Dashboard open or **Check status**.
+4. The Revivor sees it on Dashboard open or **Refresh status** (shown for in review, verified and rejected).
 
 ### How sign-in works
 - `src/lib/auth.ts`. Demo mode maps each number to an email/password account (`<digits>@phone.revo-mvp1.app`). DEMO ONLY: anyone who knows a number can sign in as it.

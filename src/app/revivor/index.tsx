@@ -5,7 +5,7 @@ import { TopBar } from '../../components/layout';
 import { CHECK_META } from '../../components/trust';
 import { Banner, Button, Card, Divider, Icon, Label, NavyCard, Row } from '../../components/ui';
 import { SERVICES } from '../../data/mock';
-import { deleteListing, fetchLatestSubmission } from '../../lib/verification';
+import { deleteListing, fetchMyRevivor } from '../../lib/verification';
 import { isVerified, ME_ID, priceText, ratingOf, REQUIRED_CHECKS, useStore } from '../../store';
 import { colors, fonts, space } from '../../theme';
 
@@ -13,31 +13,37 @@ export default function Dashboard() {
   const me = useStore((s) => s.revivors.find((r) => r.id === ME_ID));
   const reviews = useStore((s) => s.reviews);
   const submitted = useStore((s) => s.meSubmitted);
-  const applyReview = useStore((s) => s.applyReview);
+  const hydrateMe = useStore((s) => s.hydrateMe);
   const remove = useStore((s) => s.removeListing);
   const [checking, setChecking] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Latest decision on my most recent submission; null until fetched or if I never submitted.
+  const [reviewState, setReviewState] = useState<'in_review' | 'verified' | 'rejected' | null>(submitted ? 'in_review' : null);
 
-  // Pull the REVO team's decision from Supabase every time the dashboard opens.
+  // Rebuild my profile from Supabase every time the dashboard opens, in any state. A full rebuild
+  // (not just the status) keeps labels right when the team changes a decision, e.g. rejected -> verified.
   const refresh = useCallback(async () => {
     setChecking(true);
     try {
-      const review = await fetchLatestSubmission();
+      const mine = await fetchMyRevivor();
+      if (mine) hydrateMe(mine);
+      const review = mine?.submission;
       if (review) {
-        applyReview(review);
         setNote(review.reviewerNote);
+        const st = [review.idStatus, review.aseStatus];
+        setReviewState(st.includes('rejected') ? 'rejected' : st.every((x) => x === 'verified') ? 'verified' : 'in_review');
       }
     } catch {
-      setNote('Could not reach REVO. Tap Check status to try again.');
+      setNote('Could not reach REVO. Tap Refresh status to try again.');
     } finally {
       setChecking(false);
     }
-  }, [applyReview]);
+  }, [hydrateMe]);
 
   useFocusEffect(
     useCallback(() => {
-      if (submitted) refresh();
-    }, [submitted, refresh]),
+      refresh();
+    }, [refresh]),
   );
 
   if (!me) return <Redirect href="/onboarding" />;
@@ -157,10 +163,16 @@ export default function Dashboard() {
 
         {note ? <Banner icon="information-outline" text={note} /> : null}
 
-        {inReview ? (
+        {reviewState ? (
           <Card style={{ gap: 10 }}>
-            <Text style={styles.sub}>The REVO team is reviewing your ID and ASE certificate. This page updates when they finish.</Text>
-            <Button title="Check status" variant="navy" small icon="refresh" loading={checking} onPress={refresh} />
+            <Text style={styles.sub}>
+              {reviewState === 'verified'
+                ? 'You are verified. Refresh any time to see the latest from the REVO team.'
+                : reviewState === 'rejected'
+                  ? 'The REVO team could not verify something. Check the note above, then tap Continue setup to upload again.'
+                  : 'The REVO team is reviewing your ID and ASE certificate. This page updates when they finish.'}
+            </Text>
+            <Button title="Refresh status" variant="navy" small icon="refresh" loading={checking} onPress={refresh} />
           </Card>
         ) : null}
 

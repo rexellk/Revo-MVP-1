@@ -40,7 +40,7 @@ Sign in with any 10-digit number and the code `123456`. No text is sent, and the
 
 **Driver:** Find a Revivor → Sammy L. → open a certificate → Message Sammy → Confirm job → Leave a review. Ryan F. shows how a new Revivor with no reviews looks.
 
-**Revivor:** I'm a mechanic → any number + `123456` → profile (step 1) → ID + selfie, at least one ASE certificate, at least 1 work photo (step 2) → Submit for review → Dashboard shows "In review" → REVO team approves in Supabase → *Check status* shows Verified → log out and back in with the same number lands on the Dashboard.
+**Revivor:** I'm a mechanic → any number + `123456` → profile (step 1) → ID + selfie, at least one ASE certificate, at least 1 work photo (step 2) → Submit for review → Dashboard shows "In review" → REVO team approves in Supabase → *Refresh status* shows Verified → log out and back in with the same number lands on the Dashboard.
 
 The auto-replies in chat, auto-confirmed jobs, and the first driver message after verification are demo-only. They are marked `DEMO ONLY` in `src/store.ts`.
 
@@ -49,7 +49,7 @@ The auto-replies in chat, auto-confirmed jobs, and the first driver message afte
 1. Supabase dashboard → Table Editor → `review_queue`: one row per pending submission with legal name, phone, and every file path.
 2. Open the files under Storage → `verification-docs` → `<user_id>` → `<date_time>`. Profile photos are in `profile-photos`.
 3. In `verification_submissions`, find the row by `submission_id` and pick `verified` or `rejected` from the `id_status` and `ase_status` dropdowns. Add a `reviewer_note` if rejecting. `reviewed_at` fills in automatically. (`review_queue` itself is read-only.)
-4. The Revivor sees the result next time they open the Dashboard or tap *Check status*.
+4. The Revivor sees the result next time they open the Dashboard or tap *Refresh status*. To see every submission with names (not just pending), open `submissions_overview`.
 
 ## Trust rules (enforced in `src/store.ts`; verification rules also enforced by Supabase RLS)
 
