@@ -55,7 +55,8 @@ export default function TrustProfile() {
   const reviews = allReviews.filter((x) => x.revivorId === r.id);
   const { avg, count } = ratingOf(allReviews, r.id);
   const first = r.name.split(' ')[0];
-  const shown = sortChecks(r.verifications).filter((v) => v.status !== 'not_started');
+  // Only the two required checks (ID, ASE) are shown to drivers; phone is account info, not a badge.
+  const shown = sortChecks(r.verifications).filter((v) => v.status !== 'not_started' && v.type !== 'phone');
   const pending = missingChecks(r);
   const contentWidth = Math.min(width, 560) - space.lg * 2 - space.lg * 2;
   const photoSize = (contentWidth - 16) / 3;

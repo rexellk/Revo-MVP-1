@@ -11,6 +11,7 @@ import { colors, fonts, space } from '../theme';
 
 // Supabase limits code requests to about one a minute per number; 30s keeps taps from erroring.
 const RESEND_SECONDS = 30;
+const RESTORE_TIMEOUT_MS = 6000;
 
 export default function SignIn() {
   const { role = 'driver' } = useLocalSearchParams<{ role?: Role }>();
@@ -42,16 +43,26 @@ export default function SignIn() {
   }
 
   // Still signed in from last time (the session is kept on the device): skip the code.
+  // On a bad connection the check can hang, so after RESTORE_TIMEOUT_MS show the phone screen instead.
   useEffect(() => {
-    let alive = true;
+    let settled = false;
+    const giveUp = setTimeout(() => {
+      settled = true;
+      setRestoring(false);
+    }, RESTORE_TIMEOUT_MS);
     currentPhone()
       .then(async (p) => {
-        if (alive && p) await finish(p);
+        if (!settled && p) await finish(p);
       })
       .catch(() => {})
-      .finally(() => alive && setRestoring(false));
+      .finally(() => {
+        clearTimeout(giveUp);
+        if (!settled) setRestoring(false);
+        settled = true;
+      });
     return () => {
-      alive = false;
+      settled = true;
+      clearTimeout(giveUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
